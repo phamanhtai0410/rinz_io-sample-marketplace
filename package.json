@@ -1,0 +1,15 @@
+{
+  "name": "sample-marketplace",
+  "version": "1.0.0",
+  "description": "Sample Marketplace",
+  "main": "index.js",
+  "repository": "https://gitlab.rinznetwork.com/defi/sample-marketplace.git",
+  "author": "Pham Anh Tai <phamanhtai0410@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.6.0",
+    "@openzeppelin/contracts-upgradeable": "^4.6.0",
+    "dotenv": "^16.0.1",
+    "truffle": "^5.5.13"
+  }
+}
