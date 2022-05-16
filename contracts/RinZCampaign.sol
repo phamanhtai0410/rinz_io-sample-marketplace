@@ -212,7 +212,9 @@ contract RinZCampaign is ERC1155, Ownable {
 
         for (uint256 i; i < ids.length; ++i) {
             if (balanceOf(owner, ids[i]) <= 0) {
-                delete ids[i];
+                // Remove token id from holder
+                ids[i] = ids[ids.length-1];
+                ids.pop();
             }
         }
     }

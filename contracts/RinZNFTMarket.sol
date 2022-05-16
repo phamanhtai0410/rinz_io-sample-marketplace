@@ -178,27 +178,31 @@ contract RinZNFTMarket is ERC1155Holder {
         RinZNFTMarketItem.MarketItem[] storage itemsByCampaign = marketItemByCampaign[marketItem.campaign];
         for (uint256 i; i < itemsByCampaign.length; ++i) {
             if (itemsByCampaign[i].marketId == marketItem.marketId) {
-                delete itemsByCampaign[i];
+                itemsByCampaign[i] = itemsByCampaign[itemsByCampaign.length-1];
+                itemsByCampaign.pop();
             }
         }
 
         RinZNFTMarketItem.MarketItem[] storage itemsByTokenId = marketItemByTokenId[marketItem.tokenId];
         for (uint256 i; i < itemsByTokenId.length; ++i) {
             if (itemsByTokenId[i].marketId == marketItem.marketId) {
-                delete itemsByTokenId[i];
+                itemsByTokenId[i] = itemsByTokenId[itemsByTokenId.length-1];
+                itemsByTokenId.pop();
             }
         }
 
         RinZNFTMarketItem.MarketItem[] storage itemsByOwner = marketItemByOwner[marketItem.owner];
         for (uint256 i; i < itemsByOwner.length; ++i) {
             if (itemsByOwner[i].marketId != marketItem.marketId) {
-                delete itemsByOwner[i];
+                itemsByOwner[i] = itemsByOwner[itemsByOwner.length-1];
+                itemsByOwner.pop();
             }
         }
 
         for (uint256 i; i < itemSellOnMarket.length; ++i) {
             if (itemSellOnMarket[i].marketId == marketItem.marketId) {
-                delete itemSellOnMarket[i];
+                itemSellOnMarket[i] = itemSellOnMarket[itemSellOnMarket.length-1];
+                itemSellOnMarket.pop();
             }
         }
     }
