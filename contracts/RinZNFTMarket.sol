@@ -6,31 +6,51 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import "./RinZCampaign.sol";
 import "./RinZNFTMarketItem.sol";
+import "./IRinZCampaign.sol";
+import "./RinZNFTMarketCampaign.sol";
 
 contract RinZNFTMarket is ERC1155Holder {
 
     using RinZNFTMarketItem for RinZNFTMarketItem.MarketItem;
+    using RinZNFTMarketCampaign for RinZNFTMarketCampaign.MarketCampaign;
     using Counters for Counters.Counter;
 
     uint public constant TOKEN_DECIMAL = 10 ** 18;
 
     IERC20 public coinToken;
-    RinZCampaign public rinZCampaign;
+    IRinZCampaign public rinZCampaign;
 
     Counters.Counter public marketIdCounter;
 
-    address[] public campaignSellOnMarket;
+    RinZNFTMarketCampaign.MarketCampaign[] public campaignSellOnMarket;
     RinZNFTMarketItem.MarketItem[] public itemSellOnMarket;
-    mapping (address => RinZNFTMarketItem.MarketItem[]) marketItemByCampaign;
-    mapping (uint256 => RinZNFTMarketItem.MarketItem[]) marketItemByTokenId;
-    mapping (address => RinZNFTMarketItem.MarketItem[]) marketItemByOwner;
 
     function setCoinToken(
-        IERC20 coinToken_,
-        RinZCampaign rinZCampaign_
+        IERC20 coinToken_
     ) external {
         coinToken = coinToken_;
+    }
+
+    function setRinZCampaign(IRinZCampaign rinZCampaign_) internal {
         rinZCampaign = rinZCampaign_;
+    }
+
+    /*New campaign should call this function to sale item on market*/
+    //       @param {address} campaign ---- deployed address of campaign
+    //       @param {uint256} discount ---- discount fee will receive after sale item
+    //       @param {address} paymentAddress ---- an address to receive payment from discount fee
+
+    function campaignRegister(address campaign, uint256 discount, address paymentAddress) external {
+        require(_isCampaignRegistered(campaign) != true, "Campaign have registered");
+
+        RinZNFTMarketCampaign.MarketCampaign memory marketCampaign_;
+        marketCampaign_.campaign = campaign;
+        marketCampaign_.discountFee = discount;
+        marketCampaign_.paymentAddress = paymentAddress;
+
+        campaignSellOnMarket.push(marketCampaign_);
+
+        // emit event registered
     }
 
     /** Marketplace fee */
@@ -40,7 +60,10 @@ contract RinZNFTMarket is ERC1155Holder {
     }
 
     /** Sale token */
-    function sale(address campaign, uint256 tokenId, uint256 pricePerItem, uint256 amount) external {
+    function sale(IRinZCampaign campaign, uint256 tokenId, uint256 pricePerItem, uint256 amount) external {
+
+        // Set rinz campaign caller
+        setRinZCampaign(campaign);
         // Seller Address
         address owner = msg.sender;
 
@@ -50,30 +73,20 @@ contract RinZNFTMarket is ERC1155Holder {
         // Market hole token for sale
         rinZCampaign.sendNft(owner, marketOwnerAddress, tokenId, amount, "0x00");
 
-        uint256 marketId = marketIdCounter.current(); 
+        uint256 marketId = marketIdCounter.current();
         marketIdCounter.increment();
         RinZNFTMarketItem.MarketItem memory marketItem;
 
-        marketItem.marketId = marketId;                             
+        marketItem.marketId = marketId;
         marketItem.tokenId = tokenId;
-        marketItem.campaign = campaign;
+        marketItem.campaign = address(campaign);
         marketItem.amount = amount;
-        marketItem.pricePerItem = pricePerItem * TOKEN_DECIMAL;                
-        marketItem.metadataUri = rinZCampaign.uri(tokenId);
-        marketItem.owner = owner;    
+        marketItem.pricePerItem = pricePerItem * TOKEN_DECIMAL;
+        marketItem.metadataUri = rinZCampaign.getUri(tokenId);
+        marketItem.owner = owner;
 
-        campaignSellOnMarket.push(campaign);
-        itemSellOnMarket.push(marketItem);
-
-        RinZNFTMarketItem.MarketItem[] storage itemsByCampaign = marketItemByCampaign[campaign];
-        itemsByCampaign.push(marketItem);
-
-        RinZNFTMarketItem.MarketItem[] storage itemsByTokenId = marketItemByTokenId[tokenId];
-        itemsByTokenId.push(marketItem);
-
-        RinZNFTMarketItem.MarketItem[] storage itemsByOwner = marketItemByOwner[owner];
-        itemsByOwner.push(marketItem);
-//        emit Sale(to, tokenId, amount, pricePerItem);
+        campaignSellOnMarket.push(address(campaign));
+        //        emit Sale(to, tokenId, amount, pricePerItem);
     }
 
     /** Buy token */
@@ -102,109 +115,22 @@ contract RinZNFTMarket is ERC1155Holder {
         // Profit for the owner (total price - fee)
         coinToken.transferFrom(buyer, marketItem.owner, totalPrice - fee);
 
+        // Set rinz campaign caller
+        setRinZCampaign(IRinZCampaign(marketItem.campaign));
         // Market sendNft to buyer
         rinZCampaign.sendNft(marketOwnerAddress, buyer, marketItem.tokenId, amount, "0x00");
 
         // update marketItem amount
 
-        if (marketItem.amount > amount) {
-            updateMarketItemAfterBuy(marketItem, amount);
-        }
-        removeMarketItemAfterBuy(marketItem);
-
-//        emit Buy(to, tokenId, boxDetail.price, boxDetail.owner_by);
+        //        emit Buy(to, tokenId, boxDetail.price, boxDetail.owner_by);
     }
 
-
-    function getMarketItemsByTokenId(uint256 tokenId) external view returns (RinZNFTMarketItem.MarketItem[] memory) {
-        RinZNFTMarketItem.MarketItem[] memory result = marketItemByTokenId[tokenId];
-        return result;
-    }
-
-    function getMarketItemsByCampaign(address campaign) external view returns (RinZNFTMarketItem.MarketItem[] memory) {
-        RinZNFTMarketItem.MarketItem[] memory result = marketItemByCampaign[campaign];
-        return result;
-    }
-
-    function getMarketItemsByOwner(address owner) external view returns (RinZNFTMarketItem.MarketItem[] memory) {
-        RinZNFTMarketItem.MarketItem[] memory result = marketItemByOwner[owner];
-        return result;
-    }
-
-    function updateMarketItemAfterBuy(RinZNFTMarketItem.MarketItem memory marketItem, uint256 amount) internal {
-
-        RinZNFTMarketItem.MarketItem[] storage itemsByCampaign = marketItemByCampaign[marketItem.campaign];
-        for (uint256 i; i < itemsByCampaign.length; ++i) {
-            if (itemsByCampaign[i].marketId != marketItem.marketId) continue;
-            
-            RinZNFTMarketItem.MarketItem memory marketItem_ = itemsByCampaign[i];
-            marketItem_.amount = marketItem_.amount - amount;
-
-            itemsByCampaign[i] = marketItem_;
+    function _isCampaignRegistered(address campaign) internal returns (bool) {
+        for (uint256 i; i < campaignSellOnMarket.length; ++i) {
+            RinZNFTMarketCampaign.MarketCampaign memory marketCampain_ = campaignSellOnMarket[i];
+            if (marketCampain_.campaign == campaign) return true;
         }
-
-        RinZNFTMarketItem.MarketItem[] storage itemsByTokenId = marketItemByTokenId[marketItem.tokenId];
-        for (uint256 i; i < itemsByTokenId.length; ++i) {
-            if (itemsByTokenId[i].marketId != marketItem.marketId) continue;
-            
-            RinZNFTMarketItem.MarketItem memory marketItem_ = itemsByTokenId[i];
-            marketItem_.amount = marketItem_.amount - amount;
-
-            itemsByTokenId[i] = marketItem_;
-        }
-
-        RinZNFTMarketItem.MarketItem[] storage itemsByOwner = marketItemByOwner[marketItem.owner];
-        for (uint256 i; i < itemsByOwner.length; ++i) {
-            if (itemsByOwner[i].marketId != marketItem.marketId) continue;
-            
-            RinZNFTMarketItem.MarketItem memory marketItem_ = itemsByOwner[i];
-            marketItem_.amount = marketItem_.amount - amount;
-
-            itemsByOwner[i] = marketItem_;
-        }
-
-        for (uint256 i; i < itemSellOnMarket.length; ++i) {
-            if (itemSellOnMarket[i].marketId != marketItem.marketId) continue;
-
-            RinZNFTMarketItem.MarketItem memory marketItem_ = itemSellOnMarket[i];
-            marketItem_.amount = marketItem_.amount - amount;
-
-            itemSellOnMarket[i] = marketItem_;
-        }
-    }
-
-    function removeMarketItemAfterBuy(RinZNFTMarketItem.MarketItem memory marketItem) internal {
-
-        RinZNFTMarketItem.MarketItem[] storage itemsByCampaign = marketItemByCampaign[marketItem.campaign];
-        for (uint256 i; i < itemsByCampaign.length; ++i) {
-            if (itemsByCampaign[i].marketId == marketItem.marketId) {
-                itemsByCampaign[i] = itemsByCampaign[itemsByCampaign.length-1];
-                itemsByCampaign.pop();
-            }
-        }
-
-        RinZNFTMarketItem.MarketItem[] storage itemsByTokenId = marketItemByTokenId[marketItem.tokenId];
-        for (uint256 i; i < itemsByTokenId.length; ++i) {
-            if (itemsByTokenId[i].marketId == marketItem.marketId) {
-                itemsByTokenId[i] = itemsByTokenId[itemsByTokenId.length-1];
-                itemsByTokenId.pop();
-            }
-        }
-
-        RinZNFTMarketItem.MarketItem[] storage itemsByOwner = marketItemByOwner[marketItem.owner];
-        for (uint256 i; i < itemsByOwner.length; ++i) {
-            if (itemsByOwner[i].marketId != marketItem.marketId) {
-                itemsByOwner[i] = itemsByOwner[itemsByOwner.length-1];
-                itemsByOwner.pop();
-            }
-        }
-
-        for (uint256 i; i < itemSellOnMarket.length; ++i) {
-            if (itemSellOnMarket[i].marketId == marketItem.marketId) {
-                itemSellOnMarket[i] = itemSellOnMarket[itemSellOnMarket.length-1];
-                itemSellOnMarket.pop();
-            }
-        }
+        return false;
     }
 
 }
