@@ -88,7 +88,8 @@ module.exports = {
       production: true,
       gasPrice: 128,
       timeoutBlocks: 200,
-      from: '0x107Cf2a801Fae24e6542a4A92ba2ab5c23cBf8BD',
+      from: '0x8A2d4aa635EE380511Da255623048BE618343185'
+      // from: '0x59fa4C0e31340d0cd7F22b1Ae3096D3656c4C0e5'
     },
     ganache2: {
       host: '127.0.0.1', // Localhost (default: none)
