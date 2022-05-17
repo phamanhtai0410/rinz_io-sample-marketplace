@@ -11,11 +11,7 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 import "./RinZNFTDetail.sol";
 import "./IRinZCampaign.sol";
 
-contract RinZCampaign is 
-            ERC1155, 
-            Ownable, 
-            IRinZCampaign
-    {
+contract RinZCampaign is ERC1155, Ownable, IRinZCampaign {
 
     using RinZNFTDetail for RinZNFTDetail.NFTDetail;
     using Counters for Counters.Counter;
@@ -23,25 +19,41 @@ contract RinZCampaign is
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
 
+    event SendNft(address from, address to, uint256 tokenId, uint256 quantity, bytes data);
+    event ActiveGiftCode(address to, uint256 tokenId, uint256 quantity, string uri, bytes data);
+    event Mint(address to, uint256 tokenId, uint256 quantity, string uri, bytes data);
+
+    // Base uri of metadata of each tokenId
     string baseMetadataURI;
+
+    // If true tokenId will set by minner
     bool isFixedTokenId;
-    uint256 timeToBuy = 1654041600;
+    
+    // Start time to buy first nft on this campaign
+    uint256 timeToBuy;
+
     Counters.Counter public tokenIdCounter;
-    mapping (uint256 => uint256) public tokenSupply;
-    mapping (address => uint256[]) public holders;       // Mapping token's holder address to tokenIds list
+
+    // Mapping tokenId to quantity of this token
+    mapping (uint256 => uint256) public tokenSupply;  
+
+    // Mapping token's holder address to tokenIds list  
+    mapping (address => uint256[]) public holders;       
 
     // Mapping from token ID to token details.
     mapping(uint256 => RinZNFTDetail.NFTDetail) public tokenDetails;
 
-    constructor(string memory baseMetadataURI_, bool isFixedTokenId_) ERC1155("") {
+    constructor(string memory baseMetadataURI_, bool isFixedTokenId_, uint256 timeToBuy_) ERC1155("") {
         //__AccessControl_init();
         baseMetadataURI = baseMetadataURI_;
         isFixedTokenId = isFixedTokenId_;
+        timeToBuy = timeToBuy_;
 
         //_setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         //_setupRole(UPGRADER_ROLE, msg.sender);
     }
 
+    // Get metadata uri of tokenId
     function getUri(uint256 tokenId_) override public view returns (string memory) {
         return string(
             abi.encodePacked(
@@ -52,6 +64,12 @@ contract RinZCampaign is
         );
     }
 
+    // Get quantity of tokenId owned by account
+    function getBalanceOf(address account, uint256 tokenId) override public view returns (uint256) {
+        return balanceOf(account, tokenId);
+    }
+
+    // Get all nft by owner
     function getNftByOwner(address owner) external view returns (RinZNFTDetail.NFTDetail[] memory) {
         uint256[] memory ids = holders[owner];
         RinZNFTDetail.NFTDetail[] memory nfts = new RinZNFTDetail.NFTDetail[](ids.length);
@@ -63,20 +81,22 @@ contract RinZCampaign is
             RinZNFTDetail.NFTDetail memory nftDetail;
 
             nftDetail.tokenId = ids[i];
-            nftDetail.amount = balanceOf(owner, ids[i]);
-            nftDetail.uri = uri(ids[i]);
+            nftDetail.quantity = balanceOf(owner, ids[i]);
+            nftDetail.uri = getUri(ids[i]);
             nfts[i] = nftDetail;
         }
         return nfts;
     }
 
+    // Send nft when buy and sale on marketplace
     function sendNft(address from, address to, uint256 tokenId, uint256 amount, bytes memory data) override external {
         require(_isHolderHaveTokenId(from, tokenId), "Token not owned");
 
         safeTransferFrom(from, to, tokenId, amount, data);
         _removeTokenIdIfNotHave(from);
         _addTokenIdToHolder(to, tokenId);
-        // emit SendNft(from, to, tokenId, amount, data);
+
+        emit SendNft(from, to, tokenId, amount, data);
     }
 
     /**
@@ -92,68 +112,88 @@ contract RinZCampaign is
 
     /**
       * @dev Mint tokens for each id in _ids
-    * @param _to          The address to mint tokens to
-    * @param _ids         Array of ids to mint
-    * @param _quantities  Array of amounts of tokens to mint per id
-    * @param _data        Data to pass if receiver is contract
+    * @param to          The address to mint tokens to
+    * @param tokenIds    Array of ids to mint
+    * @param quantities  Array of amounts of tokens to mint per id
+    * @param data        Data to pass if receiver is contract
     */
+    
     /*
     function batchMint(
-        address _to,
-        uint256[] memory _ids,
-        uint256[] memory _quantities,
-        bytes memory _data
+        address to,
+        uint256[] memory tokenIds,
+        uint256[] memory quantities,
+        bytes memory data
     ) public {
-        for (uint256 i = 0; i < _ids.length; i++) {
-            uint256 _id = _ids[i];
-            uint256 quantity = _quantities[i];
-            tokenSupply[_id] = tokenSupply[_id] + quantity;
+        require(tokenIds.length == quantities.length, "TokenId and Quantities array must be the same length");
+
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            require(quantities[i] > 0, "No token to mint");
+
+            uint256 tokenId = tokenIds[i];
+            uint256 quantity = quantities[i];
+            tokenSupply[tokenId] = tokenSupply[tokenId] + quantity;
         }
-        _mintBatch(_to, _ids, _quantities, _data);
+        _mintBatch(to, tokenIds, quantities, data);
     }
     */
+    
 
     /**
       * @dev Mint tokens for id defined (first buy on market)
-    * @param _to          The address to mint tokens to
-    * @param _id          Id to mint
-    * @param _quantity    Array of amounts of tokens to mint per id
-    * @param _data        Data to pass if receiver is contract
+    * @param to          The address to mint tokens to
+    * @param tokenId     Id to mint
+    * @param quantity    Array of amounts of tokens to mint per id
+    * @param data        Data to pass if receiver is contract
     */
     function mint(
-        address _to,
-        uint256 _id,
-        uint256 _quantity,
-        bytes memory _data
-    ) external {
-        require(_quantity > 0, "No token to mint");
+        address to,
+        uint256 tokenId,
+        uint256 quantity,
+        bytes memory data
+    ) override external {
+        require(quantity > 0, "No token to mint");
         require(block.timestamp > timeToBuy, "It's not time to buy");
-        if (isFixedTokenId) {
-            _mint(_to, _id, _quantity, _data);
-        } else {
+
+        // If not fixed token id, id is auto increment
+        if (!isFixedTokenId) {
             tokenIdCounter.increment();
-            _id = tokenIdCounter.current();
-            _mint(_to, _id, _quantity, _data);
-        }
-        _addTokenIdToHolder(_to, _id);
-        tokenSupply[_id] = _quantity;
+            tokenId = tokenIdCounter.current();
+        } 
+            
+        _mint(to, tokenId, quantity, data);
+        
+        _addTokenIdToHolder(to, tokenId);
+        tokenSupply[tokenId] = quantity;
+
+        string memory uri = getUri(tokenId);
+        emit Mint(to, tokenId, quantity, uri, data);
     }
 
     /**
       * @dev Mint token for user have gift code
-    * @param _to          The address to mint token to (dev Wallet)
-    * @param _id          Id to mint
-    * @param _quantity    Array of amounts of tokens to mint per id
-    * @param _data        Data to pass if receiver is contract
+    * @param to          The address to mint token to (dev Wallet)
+    * @param tokenId     Id to mint
+    * @param quantity    Array of amounts of tokens to mint per id
+    * @param data        Data to pass if receiver is contract
     * should update access control only dev or owner can call this function
     */
-    function mintByGiftCode(address _to, uint256 _id, uint256 _quantity, bytes memory _data) external {
-        require(_quantity > 0, "No token to mint");
-        _mint(_to, _id, _quantity, _data);
-        _addTokenIdToHolder(_to, _id);
-        tokenSupply[_id] = _quantity;
+    function mintByGiftCode(address to, uint256 tokenId, uint256 quantity, bytes memory data) external {
+        require(quantity > 0, "No token to mint");
+
+        if (!isFixedTokenId) {
+            tokenIdCounter.increment();
+            tokenId = tokenIdCounter.current();
+        } 
+        _mint(to, tokenId, quantity, data);
+        _addTokenIdToHolder(to, tokenId);
+        tokenSupply[tokenId] = quantity;
+
+        string memory uri = getUri(tokenId);
+        emit ActiveGiftCode(to, tokenId, quantity, uri, data);
     }
 
+    // Remove tokenId of holder if not have (quantity < 1)
     function _removeTokenIdIfNotHave(
         address owner
     ) internal {
@@ -167,6 +207,7 @@ contract RinZCampaign is
         }
     }
 
+    // Add tokenId to holder
     function _addTokenIdToHolder(
         address holderAddress,
         uint256 tokenId
@@ -178,6 +219,7 @@ contract RinZCampaign is
         }
     }
 
+    // Check if holder have tokenId
     function _isHolderHaveTokenId (address holderAddress, uint256 tokenId) internal view returns (bool) {
         uint256[] storage ids = holders[holderAddress];
 
