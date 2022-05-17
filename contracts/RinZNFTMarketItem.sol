@@ -8,7 +8,8 @@ library RinZNFTMarketItem {
         address campaign;           // nft address (campaign address)
         uint256 amount;             // sell amount
         uint256 pricePerItem;       // price of each token
-        string metadataUri;                 // uri (.json) token metadata
+        string metadataUri;         // uri (.json) token metadata
         address owner;              // owner of marketItem (seller)
+        bool isOnSale;              // true if item sale on market
     }
 }

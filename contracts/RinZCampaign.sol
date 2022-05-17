@@ -9,9 +9,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "./RinZNFTDetail.sol";
-import "./IRinZCampaign.sol";
 
-contract RinZCampaign is ERC1155, Ownable, IRinZCampaign {
+contract RinZCampaign is ERC1155, Ownable {
 
     using RinZNFTDetail for RinZNFTDetail.NFTDetail;
     using Counters for Counters.Counter;
@@ -54,7 +53,7 @@ contract RinZCampaign is ERC1155, Ownable, IRinZCampaign {
     }
 
     // Get metadata uri of tokenId
-    function getUri(uint256 tokenId_) override public view returns (string memory) {
+    function uri(uint256 tokenId_) override public view returns (string memory) {
         return string(
             abi.encodePacked(
                 baseMetadataURI,
@@ -62,11 +61,6 @@ contract RinZCampaign is ERC1155, Ownable, IRinZCampaign {
                 ".json"
             )
         );
-    }
-
-    // Get quantity of tokenId owned by account
-    function getBalanceOf(address account, uint256 tokenId) override public view returns (uint256) {
-        return balanceOf(account, tokenId);
     }
 
     // Get all nft by owner
@@ -82,14 +76,14 @@ contract RinZCampaign is ERC1155, Ownable, IRinZCampaign {
 
             nftDetail.tokenId = ids[i];
             nftDetail.quantity = balanceOf(owner, ids[i]);
-            nftDetail.uri = getUri(ids[i]);
+            nftDetail.uri = uri(ids[i]);
             nfts[i] = nftDetail;
         }
         return nfts;
     }
 
     // Send nft when buy and sale on marketplace
-    function sendNft(address from, address to, uint256 tokenId, uint256 amount, bytes memory data) override external {
+/*    function sendNft(address from, address to, uint256 tokenId, uint256 amount, bytes memory data) override external {
         require(_isHolderHaveTokenId(from, tokenId), "Token not owned");
 
         safeTransferFrom(from, to, tokenId, amount, data);
@@ -98,7 +92,7 @@ contract RinZCampaign is ERC1155, Ownable, IRinZCampaign {
 
         emit SendNft(from, to, tokenId, amount, data);
     }
-
+*/
     /**
     * @dev Returns the total quantity for a token ID
     * @param _id uint256 ID of the token to query
@@ -151,7 +145,7 @@ contract RinZCampaign is ERC1155, Ownable, IRinZCampaign {
         uint256 tokenId,
         uint256 quantity,
         bytes memory data
-    ) override external {
+    ) external {
         require(quantity > 0, "No token to mint");
         require(block.timestamp > timeToBuy, "It's not time to buy");
 
@@ -166,8 +160,8 @@ contract RinZCampaign is ERC1155, Ownable, IRinZCampaign {
         _addTokenIdToHolder(to, tokenId);
         tokenSupply[tokenId] = quantity;
 
-        string memory uri = getUri(tokenId);
-        emit Mint(to, tokenId, quantity, uri, data);
+        string memory metatDataUri = uri(tokenId);
+        emit Mint(to, tokenId, quantity, metatDataUri, data);
     }
 
     /**
@@ -189,8 +183,8 @@ contract RinZCampaign is ERC1155, Ownable, IRinZCampaign {
         _addTokenIdToHolder(to, tokenId);
         tokenSupply[tokenId] = quantity;
 
-        string memory uri = getUri(tokenId);
-        emit ActiveGiftCode(to, tokenId, quantity, uri, data);
+        string memory metatDataUri = uri(tokenId);
+        emit ActiveGiftCode(to, tokenId, quantity, metatDataUri, data);
     }
 
     // Remove tokenId of holder if not have (quantity < 1)

@@ -4,10 +4,11 @@ pragma solidity ^0.8.2;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./RinZCampaign.sol";
 import "./RinZNFTMarketItem.sol";
-import "./IRinZCampaign.sol";
 import "./RinZNFTMarketCampaign.sol";
 
 contract RinZNFTMarket is ERC1155Holder, Ownable {
@@ -37,12 +38,11 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
     uint public constant TOKEN_DECIMAL = 10 ** 18;
 
     IERC20 public coinToken;
-    IRinZCampaign public rinZCampaign;
 
     Counters.Counter public marketIdCounter;
 
     mapping (address => RinZNFTMarketCampaign.MarketCampaign) public campaignSellOnMarket;
-    RinZNFTMarketItem.MarketItem[] public itemSellOnMarket;
+    mapping (uint256 => RinZNFTMarketItem.MarketItem) public itemSellOnMarket;
 
 
     function setCoinToken(
@@ -51,27 +51,23 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         coinToken = coinToken_;
     }
 
-    function setRinZCampaign(IRinZCampaign rinZCampaign_) internal {
-        rinZCampaign = rinZCampaign_;
-    }
-
     /*New campaign should call this function to sale item on market*/
     //       @param {address} campaign ---- deployed address of campaign
-    //       @param {uint256} discount ---- discount fee will receive after sale item
+    //       @param {uint256} discountPercent ---- discount percent will receive after sale item
     //       @param {address} paymentAddress ---- an address to receive payment from discount fee
 
-    function campaignRegister(address campaign, uint256 discountFee, address paymentAddress) external onlyOwner {
+    function campaignRegister(address campaign, uint256 discountPercent, address paymentAddress) external {
         require(_isCampaignRegistered(campaign) != true, "Campaign have registered");
 
         RinZNFTMarketCampaign.MarketCampaign memory marketCampaign_;
         marketCampaign_.isActiveSale = true;
-        marketCampaign_.discountFee = discountFee;
+        marketCampaign_.discountPercent = discountPercent;
         marketCampaign_.paymentAddress = paymentAddress;
 
         campaignSellOnMarket[campaign] = marketCampaign_;
 
         // emit event registered
-        emit CampaignRegistered(campaign, discountFee, paymentAddress);
+        emit CampaignRegistered(campaign, discountPercent, paymentAddress);
     }
 
     /** Marketplace fee */
@@ -87,12 +83,8 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
     }
 
     /** Sale token */
-    function sale(IRinZCampaign campaign, uint256 tokenId, uint256 pricePerItem, uint256 amount) external {
-
-        // Set rinz campaign caller
-        setRinZCampaign(campaign);
-
-        require(rinZCampaign.getBalanceOf(msg.sender, tokenId) > 0, "NFT not owned");
+    function sale(address campaign, uint256 tokenId, uint256 pricePerItem, uint256 amount) external {
+        require(ERC1155(campaign).balanceOf(msg.sender, tokenId) > 0, "NFT not owned");
         
         // Seller Address
         address owner = msg.sender;
@@ -101,29 +93,30 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         address marketOwnerAddress = address(this);
 
         // Market hole token for sale
-        rinZCampaign.sendNft(owner, marketOwnerAddress, tokenId, amount, "0x00");
+        ERC1155(campaign).safeTransferFrom(owner, marketOwnerAddress, tokenId, amount, "0x00");
 
         uint256 marketId = marketIdCounter.current();
         marketIdCounter.increment();
         RinZNFTMarketItem.MarketItem memory marketItem;
-        string memory metadataUri = rinZCampaign.getUri(tokenId);
+        string memory metadataUri = ERC1155(campaign).uri(tokenId);
 
         marketItem.marketId = marketId;
         marketItem.tokenId = tokenId;
-        marketItem.campaign = address(campaign);
+        marketItem.campaign = campaign;
         marketItem.amount = amount;
         marketItem.pricePerItem = pricePerItem * TOKEN_DECIMAL;
         marketItem.metadataUri = metadataUri;
         marketItem.owner = owner;
+        marketItem.isOnSale = true;
 
-        itemSellOnMarket.push(marketItem);
+        itemSellOnMarket[marketId] = marketItem;
 
-        emit Sale(marketId, owner, address(campaign), tokenId, pricePerItem, metadataUri, amount);
+        emit Sale(marketId, owner, campaign, tokenId, pricePerItem, metadataUri, amount);
     }
 
     // Fist buy from the campaign,
     // should check quantity in db before call this function to avoid out of token supply
-    function firstBuy(IRinZCampaign campaign, uint256 tokenId, uint256 pricePerItem, uint256 amount) external {
+ /*   function firstBuy(IRinZCampaign campaign, uint256 tokenId, uint256 pricePerItem, uint256 amount) external {
         require(_isCampaignRegistered(address(campaign)) == true, "Campaign haven't registered");
         require(_isCampaignActive(address(campaign)) == true, "Campaign have deactivated");
 
@@ -156,6 +149,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
 
         emit FirstBuy(address(campaign), tokenId, amount, buyer);
     }
+*/
 
     /** Buy token */
     function buy(uint256 marketId, uint256 amount) external {
@@ -163,13 +157,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         address buyer = msg.sender;
         // Address of marketplace
         address marketOwnerAddress = address(this);
-        RinZNFTMarketItem.MarketItem memory marketItem;
-        for (uint256 i; i < itemSellOnMarket.length; ++i) {
-            RinZNFTMarketItem.MarketItem memory marketItem_ = itemSellOnMarket[i];
-            if (marketItem_.marketId == marketId) {
-                marketItem = marketItem_;
-            }
-        }
+        RinZNFTMarketItem.MarketItem memory marketItem = itemSellOnMarket[marketId];
 
         require(_isCampaignActive(marketItem.campaign) == true, "Campaign have deactivated");
         require(marketItem.amount >= amount, "Not enough amount");
@@ -182,22 +170,25 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         // get campaign registered info
         RinZNFTMarketCampaign.MarketCampaign memory marketCampaign = campaignSellOnMarket[marketItem.campaign];
 
-        if (marketCampaign.discountFee > 0) {
+        // TODO: Decrease coinToken transfer from 3 to 2
+        // market will hold fee and send to kol when they send withdraw request
+        uint256 discountFee = 0;
+         // Fee for market
+        coinToken.transferFrom(buyer, marketOwnerAddress, marketPlaceFee);
+
+        if (marketCampaign.discountPercent > 0) {
             // Discount fee for kol
-            uint256 discountFee = discountFeeForCampaignOwner(totalPrice, marketCampaign.discountFee);
+            discountFee = discountFeeForCampaignOwner(totalPrice, marketCampaign.discountPercent);
             // Fee for kol
             coinToken.transferFrom(buyer, marketCampaign.paymentAddress, discountFee);
         }
-        // Fee for market
-        coinToken.transferFrom(buyer, marketOwnerAddress, marketPlaceFee);
-
+       
         // Profit for the owner (total price - marketPlaceFee - discountFee)
         coinToken.transferFrom(buyer, marketItem.owner, totalPrice - marketPlaceFee - discountFee);
-
-        // Set rinz campaign caller
-        setRinZCampaign(IRinZCampaign(marketItem.campaign));
+        
         // Market sendNft to buyer
-        rinZCampaign.sendNft(marketOwnerAddress, buyer, marketItem.tokenId, amount, "0x00");
+        ERC1155(marketItem.campaign).setApprovalForAll(marketOwnerAddress, true);
+        ERC1155(marketItem.campaign).safeTransferFrom(marketOwnerAddress, buyer, marketItem.tokenId, amount, "0x00");
 
         // update marketItem amount
 
@@ -212,21 +203,17 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
     function changeCampaignInfo(
         address campaign,
          bool isActive, 
-         uint256 discountFee,
+         uint256 discountPercent,
           address paymentAddress
         ) external onlyOwner {
         require(_isCampaignRegistered(campaign) == true, "Campaign haven't registered");
         campaignSellOnMarket[campaign].isActiveSale = isActive;
-        campaignSellOnMarket[campaign].discountFee = discountFee;
+        campaignSellOnMarket[campaign].discountPercent = discountPercent;
         campaignSellOnMarket[campaign].paymentAddress = paymentAddress;
     }
 
     function _isCampaignActive(address campaign) public view returns (bool) {
         RinZNFTMarketCampaign.MarketCampaign memory marketCampaign_ = campaignSellOnMarket[campaign];
         return marketCampaign_.isActiveSale;
-    }
-
-    function getAllMarketItems() external view returns (RinZNFTMarketItem.MarketItem[] memory) {
-        return itemSellOnMarket;
     }
 }
