@@ -83,7 +83,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
     /** Discount fee for kol */
     function discountFeeForCampaignOwner(uint256 amount, uint256 percent) internal pure returns (uint256 fee) {
         // TODO check rate
-        fee = amount * percent / 100;
+        fee = amount * percent / 1000;
     }
 
     /** Sale token */
@@ -144,7 +144,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         // Fee for market
         coinToken.transferFrom(buyer, marketOwnerAddress, marketPlaceFee);
 
-        // get campaign registerd info
+        // get campaign registered info
         RinZNFTMarketCampaign.MarketCampaign memory marketCampaign = campaignSellOnMarket[address(campaign)];
 
         // Profit for the owner (total price - fee)
@@ -181,11 +181,13 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         
         // get campaign registered info
         RinZNFTMarketCampaign.MarketCampaign memory marketCampaign = campaignSellOnMarket[marketItem.campaign];
-        // Discount fee for kol
-        uint256 discountFee = discountFeeForCampaignOwner(totalPrice, marketCampaign.discountFee);
 
-        // Fee for kol
-        coinToken.transferFrom(buyer, marketCampaign.paymentAddress, discountFee);
+        if (marketCampaign.discountFee > 0) {
+            // Discount fee for kol
+            uint256 discountFee = discountFeeForCampaignOwner(totalPrice, marketCampaign.discountFee);
+            // Fee for kol
+            coinToken.transferFrom(buyer, marketCampaign.paymentAddress, discountFee);
+        }
         // Fee for market
         coinToken.transferFrom(buyer, marketOwnerAddress, marketPlaceFee);
 
@@ -207,7 +209,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         return marketCampaign_.paymentAddress != address(0);
     }
 
-    function _changeCampaignInfo(
+    function changeCampaignInfo(
         address campaign,
          bool isActive, 
          uint256 discountFee,
