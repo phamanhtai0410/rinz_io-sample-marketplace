@@ -105,8 +105,6 @@ contract RinZCampaign is ERC1155, Ownable {
 
     // Get metadata uri of tokenId
     function uri(uint256 _tokenId) override public view returns (string memory) {
-        RinZNFTDetail.NFTDetail memory tokenDetail = tokenDetails[_tokenId];
-        require(tokenDetail.quantity > 0, "Token is not exist");
         return string(
             abi.encodePacked(
                 baseMetadataURI,
