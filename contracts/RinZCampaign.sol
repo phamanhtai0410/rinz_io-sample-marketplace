@@ -18,8 +18,8 @@ contract RinZCampaign is ERC1155, Ownable {
     using RinZNFTTypeDetail for RinZNFTTypeDetail.NFTTypeDetail;
     using Counters for Counters.Counter;
 
-    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-    bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
+    // bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    // bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
 
     event ActiveGiftCode(address to, uint16 tokenId, uint8 tokenType, string uri, bytes data);
     event Mint(address to, uint16 tokenId, uint8 tokenType, string uri, bytes data);
@@ -60,6 +60,9 @@ contract RinZCampaign is ERC1155, Ownable {
 
     // Mapping token type to campaign detail on this campaign
     mapping (uint8 => RinZNFTTypeDetail.NFTTypeDetail) public nftTypeDetails;
+
+    // Mapping token type to rate of openBox action
+    mapping (uint8 => uint16) public openBoxRates;
 
     // Mapping token type to supply have minted
     mapping (uint8 => uint256) public nftTypeSupply;
@@ -109,17 +112,29 @@ contract RinZCampaign is ERC1155, Ownable {
         return customTokenIdsWhiteList[_tokenId];
     }
 
-    function createNFTTypeDetail(uint256 _totalSupply, uint256 _pricePerItem) public onlyOwner {
+    function createNFTTypeDetail(uint256 _totalSupply, uint256 _pricePerItem, bool isBox) public onlyOwner {
         RinZNFTTypeDetail.NFTTypeDetail memory _nftTypeDetail;
-        uint8 nftType = uint8(typeCounter.current());
+        
+        uint8 nftType;
+        
+        if (isBox) nftType = 0; // typeId of box is 0
+        else {
+            typeCounter.increment();
+            nftType = uint8(typeCounter.current());
+        }
         _nftTypeDetail.nftType = nftType;
-        typeCounter.increment();
         _nftTypeDetail.totalSupply = _totalSupply;
         _nftTypeDetail.pricePerItem = _pricePerItem * TOKEN_DECIMAL;
 
         nftTypeDetails[nftType] = _nftTypeDetail;
 
         emit CreateNFTTypeDetail(nftType, _totalSupply, _pricePerItem);
+    }
+
+    function createOpenBoxRate(uint8[] memory _tokenType, uint16[] memory _rates) public onlyOwner {
+        for (uint8 i = 0; i < _tokenType.length; i++) {
+            openBoxRates[_tokenType[i]] = _rates[i];
+        }
     }
 
     // Get metadata uri of tokenId
@@ -157,7 +172,7 @@ contract RinZCampaign is ERC1155, Ownable {
       * @dev Mint tokens for id defined (first buy on market)
     * @param _to          The address to mint tokens to
     * @param _tokenId     Id to mint
-    * @param _tokenType   Type of token to mint
+    * @param _tokenType   Type of token to mint - if box tokenType is 0
     * @param _data        Data to pass if receiver is contract
     */
     function mint(
