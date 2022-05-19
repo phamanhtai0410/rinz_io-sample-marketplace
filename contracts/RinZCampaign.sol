@@ -21,10 +21,12 @@ contract RinZCampaign is ERC1155, Ownable {
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
 
-    event SendNft(address from, address to, uint256 tokenId, uint256 quantity, bytes data);
-    event ActiveGiftCode(address to, uint256 tokenId, uint256 tokenType, string uri, bytes data);
-    event Mint(address to, uint256 tokenId, uint256 tokenType, string uri, bytes data);
+    event ActiveGiftCode(address to, uint16 tokenId, uint8 tokenType, string uri, bytes data);
+    event Mint(address to, uint16 tokenId, uint8 tokenType, string uri, bytes data);
+    event CreateNFTTypeDetail(uint8 tokenType, uint256 totalSupply, uint256 pricePerItem);
 
+    // token decimal
+     uint public constant TOKEN_DECIMAL = 10 ** 18;
 
     // Market place owner address to receive market fee when mint token
     address marketOwnerAddress;
@@ -53,20 +55,23 @@ contract RinZCampaign is ERC1155, Ownable {
 
     Counters.Counter public typeCounter;
 
+    // custom token Ids list
+    mapping (uint16 => bool) customTokenIdsWhiteList;
+
     // Mapping token type to campaign detail on this campaign
-    mapping (uint256 => RinZNFTTypeDetail.NFTTypeDetail) public nftTypeDetails;
+    mapping (uint8 => RinZNFTTypeDetail.NFTTypeDetail) public nftTypeDetails;
 
     // Mapping token type to supply have minted
-    mapping (uint256 => uint256) public nftTypeSupply;
+    mapping (uint8 => uint256) public nftTypeSupply;
 
     // Mapping token's holder address to tokenIds list  
-    mapping (address => uint256[]) public holders;   
+    mapping (address => uint16[]) public holders;   
 
     // Mapping token id to token type
-    mapping (uint256 => uint256) public tokenIdsByType; 
+    mapping (uint16 => uint8) public tokenIdsByType; 
 
     // Mapping from token ID to token details.
-    mapping(uint256 => RinZNFTDetail.NFTDetail) public tokenDetails;
+    mapping(uint16 => RinZNFTDetail.NFTDetail) public tokenDetails;
 
     constructor(
         address _marketOwnerAddress,
@@ -92,15 +97,29 @@ contract RinZCampaign is ERC1155, Ownable {
         //_setupRole(UPGRADER_ROLE, msg.sender);
     }
 
+    function getSymbol() external view returns (string memory) {
+        return symbol;
+    }
+
+    function customTokenIdToWhiteList(uint16 _tokenId, bool _isActive) public onlyOwner {
+        customTokenIdsWhiteList[_tokenId] = _isActive;
+    }
+
+    function tokenIdIsInWhiteList(uint16 _tokenId) public view onlyOwner returns(bool) {
+        return customTokenIdsWhiteList[_tokenId];
+    }
+
     function createNFTTypeDetail(uint256 _totalSupply, uint256 _pricePerItem) public onlyOwner {
         RinZNFTTypeDetail.NFTTypeDetail memory _nftTypeDetail;
-        uint256 nftType = typeCounter.current();
+        uint8 nftType = uint8(typeCounter.current());
         _nftTypeDetail.nftType = nftType;
         typeCounter.increment();
         _nftTypeDetail.totalSupply = _totalSupply;
-        _nftTypeDetail.pricePerItem = _pricePerItem;
+        _nftTypeDetail.pricePerItem = _pricePerItem * TOKEN_DECIMAL;
 
         nftTypeDetails[nftType] = _nftTypeDetail;
+
+        emit CreateNFTTypeDetail(nftType, _totalSupply, _pricePerItem);
     }
 
     // Get metadata uri of tokenId
@@ -116,10 +135,10 @@ contract RinZCampaign is ERC1155, Ownable {
 
     // Get all nft by owner
     function getNftByOwner(address _owner) external view returns (RinZNFTDetail.NFTDetail[] memory) {
-        uint256[] memory ids = holders[_owner];
+        uint16[] memory ids = holders[_owner];
         RinZNFTDetail.NFTDetail[] memory nfts = new RinZNFTDetail.NFTDetail[](ids.length);
-        for (uint256 i = 0; i < ids.length; ++i) {
-            uint256 amountOfIdUserOwner = balanceOf(_owner, ids[i]);
+        for (uint16 i = 0; i < ids.length; ++i) {
+            uint256 amountOfIdUserOwner = balanceOf(_owner, uint256(ids[i]));
 
             if (amountOfIdUserOwner <= 0) continue;
 
@@ -127,53 +146,12 @@ contract RinZCampaign is ERC1155, Ownable {
 
             nftDetail.tokenId = ids[i];
             nftDetail.tokenType = tokenIdsByType[ids[i]];
-            nftDetail.quantity = balanceOf(_owner, ids[i]);
-            nftDetail.uri = uri(ids[i]);
+            nftDetail.quantity = balanceOf(_owner, uint256(ids[i]));
+            nftDetail.uri = uri(uint256(ids[i]));
             nfts[i] = nftDetail;
         }
         return nfts;
     }
-
-    // Send nft when buy and sale on marketplace
-/*    function sendNft(address from, address to, uint256 tokenId, uint256 amount, bytes memory data) override external {
-        require(_isHolderHaveTokenId(from, tokenId), "Token not owned");
-
-        safeTransferFrom(from, to, tokenId, amount, data);
-        _removeTokenIdIfNotHave(from);
-        _addTokenIdToHolder(to, tokenId);
-
-        emit SendNft(from, to, tokenId, amount, data);
-    }
-*/
-
-    /**
-      * @dev Mint tokens for each id in _ids
-    * @param to          The address to mint tokens to
-    * @param tokenIds    Array of ids to mint
-    * @param quantities  Array of amounts of tokens to mint per id
-    * @param data        Data to pass if receiver is contract
-    */
-    
-    /*
-    function batchMint(
-        address to,
-        uint256[] memory tokenIds,
-        uint256[] memory quantities,
-        bytes memory data
-    ) public {
-        require(tokenIds.length == quantities.length, "TokenId and Quantities array must be the same length");
-
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            require(quantities[i] > 0, "No token to mint");
-
-            uint256 tokenId = tokenIds[i];
-            uint256 quantity = quantities[i];
-            tokenSupply[tokenId] = tokenSupply[tokenId] + quantity;
-        }
-        _mintBatch(to, tokenIds, quantities, data);
-    }
-    */
-    
 
     /**
       * @dev Mint tokens for id defined (first buy on market)
@@ -184,8 +162,8 @@ contract RinZCampaign is ERC1155, Ownable {
     */
     function mint(
         address _to,
-        uint256 _tokenId,
-        uint256 _tokenType,
+        uint16 _tokenId,
+        uint8 _tokenType,
         bytes memory _data
     ) external {
         // Check time to buy
@@ -203,8 +181,11 @@ contract RinZCampaign is ERC1155, Ownable {
         // If not fixed token id, id is auto increment
         if (!isFixedTokenId) {
             tokenIdCounter.increment();
-            _tokenId = tokenIdCounter.current();
-        } 
+            _tokenId = uint16(tokenIdCounter.current());
+        } else {
+            // require custom token id in white list
+            require(_isCustomTokenIdExist(_tokenId), "Token id isn't in whitelist");
+        }
 
         // Check token id is minted
         RinZNFTDetail.NFTDetail memory tokenDetail = tokenDetails[_tokenId];
@@ -216,7 +197,7 @@ contract RinZCampaign is ERC1155, Ownable {
         // Profit for the owner (total price - marketPlaceFee - discountFee)
         coinToken.transferFrom(_to, campaignPaymentAddress, nftTypeDetail.pricePerItem - marketPlaceFee);
             
-        _mint(_to, _tokenId, 1, _data);
+        _mint(_to, uint256(_tokenId), 1, _data);
         
         // Update holders token ids
         _addTokenIdToHolder(_to, _tokenId);
@@ -248,7 +229,7 @@ contract RinZCampaign is ERC1155, Ownable {
     * @param _data        Data to pass if receiver is contract
     * should update access control only dev or owner can call this function
     */
-    function mintByGiftCode(address _to, uint256 _tokenId, uint256 _tokenType, bytes memory _data) public onlyOwner {
+    function mintByGiftCode(address _to, uint16 _tokenId, uint8 _tokenType, bytes memory _data) public onlyOwner {
         // Check time to buy
         require(block.timestamp >= startTimeToBuy, "It's not time to buy");
         require(block.timestamp <= endTimeToBuy, "It's not time to buy");
@@ -264,14 +245,14 @@ contract RinZCampaign is ERC1155, Ownable {
         // If not fixed token id, id is auto increment
         if (!isFixedTokenId) {
             tokenIdCounter.increment();
-            _tokenId = tokenIdCounter.current();
+            _tokenId = uint16(tokenIdCounter.current());
         } 
 
         // Check token id is minted
         RinZNFTDetail.NFTDetail memory tokenDetail = tokenDetails[_tokenId];
         require(tokenDetail.quantity == 0, "Token id is minted");
             
-        _mint(_to, _tokenId, 1, _data);
+        _mint(_to, uint256(_tokenId), 1, _data);
         
         // Update holders token ids
         _addTokenIdToHolder(_to, _tokenId);
@@ -299,10 +280,10 @@ contract RinZCampaign is ERC1155, Ownable {
     function _removeTokenIdIfNotHave(
         address _owner
     ) internal {
-        uint256[] storage ids = holders[_owner];
+        uint16[] storage ids = holders[_owner];
 
         for (uint256 i; i < ids.length; ++i) {
-            if (balanceOf(_owner, ids[i]) <= 0) {
+            if (balanceOf(_owner, uint256(ids[i])) <= 0) {
                 ids[i] = ids[ids.length - 1];
                 ids.pop();
             }
@@ -312,18 +293,18 @@ contract RinZCampaign is ERC1155, Ownable {
     // Add tokenId to holder
     function _addTokenIdToHolder(
         address _holderAddress,
-        uint256 _tokenId
+        uint16 _tokenId
     ) internal {
-        uint256[] storage ids = holders[_holderAddress];
+        uint16[] storage ids = holders[_holderAddress];
 
-        if (!_isHolderHaveTokenId(_holderAddress, _tokenId) && balanceOf(_holderAddress, _tokenId) > 0) {
+        if (!_isHolderHaveTokenId(_holderAddress, _tokenId) && balanceOf(_holderAddress, uint256(_tokenId)) > 0) {
             ids.push(_tokenId);
         }
     }
 
     // Check if holder have tokenId
-    function _isHolderHaveTokenId (address _holderAddress, uint256 _tokenId) internal view returns (bool) {
-        uint256[] storage ids = holders[_holderAddress];
+    function _isHolderHaveTokenId (address _holderAddress, uint16 _tokenId) internal view returns (bool) {
+        uint16[] storage ids = holders[_holderAddress];
 
         for (uint256 i; i < ids.length; ++i) {
             if (ids[i] == _tokenId) return true;
@@ -336,5 +317,9 @@ contract RinZCampaign is ERC1155, Ownable {
     function _marketFee(uint256 _amount) internal pure returns (uint256 fee) {
         // TODO check rate
         fee = (_amount / 1000) * 45;
+    }
+
+    function _isCustomTokenIdExist(uint16 _tokenId) internal view returns (bool) {
+        return customTokenIdsWhiteList[_tokenId];
     }
 }
