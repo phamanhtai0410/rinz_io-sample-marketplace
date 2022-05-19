@@ -21,8 +21,8 @@ contract RinZCampaign is ERC1155, Ownable {
     // bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     // bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
 
-    event ActiveGiftCode(address to, uint16 tokenId, uint8 tokenType, string uri, bytes data);
-    event Mint(address to, uint16 tokenId, uint8 tokenType, string uri, bytes data);
+    event ActiveGiftCode(address to, uint16 tokenId, uint8 tokenType, string uri, string giftCode, bytes data);
+    event Mint(address to, uint16 tokenId, uint8 tokenType, string uri, bytes data, uint256 kolProfit, uint256 marketFee);
     event CreateNFTTypeDetail(uint8 tokenType, uint256 totalSupply, uint256 pricePerItem);
 
     // token decimal
@@ -75,6 +75,9 @@ contract RinZCampaign is ERC1155, Ownable {
 
     // Mapping from token ID to token details.
     mapping(uint16 => RinZNFTDetail.NFTDetail) public tokenDetails;
+
+    // Mapping gift code is active
+    mapping (string => bool) public giftCodes;
 
     constructor(
         address _marketOwnerAddress,
@@ -209,8 +212,9 @@ contract RinZCampaign is ERC1155, Ownable {
         uint256 marketPlaceFee = _marketFee(nftTypeDetail.pricePerItem);
         // Fee for market
         coinToken.transferFrom(_to, marketOwnerAddress, marketPlaceFee);
-        // Profit for the owner (total price - marketPlaceFee - discountFee)
-        coinToken.transferFrom(_to, campaignPaymentAddress, nftTypeDetail.pricePerItem - marketPlaceFee);
+        // Profit for the kol (total price - marketPlaceFee - discountFee)
+        uint256 kolProfit = nftTypeDetail.pricePerItem - marketPlaceFee;
+        coinToken.transferFrom(_to, campaignPaymentAddress, kolProfit);
             
         _mint(_to, uint256(_tokenId), 1, _data);
         
@@ -233,7 +237,7 @@ contract RinZCampaign is ERC1155, Ownable {
 
         tokenDetails[_tokenId] = tokenDetail;
 
-        emit Mint(_to, _tokenId, _tokenType, metaDataUri, _data);
+        emit Mint(_to, _tokenId, _tokenType, metaDataUri, _data, kolProfit, marketPlaceFee);
     }
 
     /**
@@ -244,10 +248,13 @@ contract RinZCampaign is ERC1155, Ownable {
     * @param _data        Data to pass if receiver is contract
     * should update access control only dev or owner can call this function
     */
-    function mintByGiftCode(address _to, uint16 _tokenId, uint8 _tokenType, bytes memory _data) public onlyOwner {
+    function mintByGiftCode(address _to, uint16 _tokenId, uint8 _tokenType, string memory _giftCode, bytes memory _data) public onlyOwner {
         // Check time to buy
         require(block.timestamp >= startTimeToBuy, "It's not time to buy");
         require(block.timestamp <= endTimeToBuy, "It's not time to buy");
+
+        // Check giftCode is activated
+        require(!giftCodes[_giftCode], "Gift code is already activated");
         
         // Check token type is exist in this campaign
         RinZNFTTypeDetail.NFTTypeDetail memory nftTypeDetail = nftTypeDetails[_tokenType];
@@ -287,8 +294,9 @@ contract RinZCampaign is ERC1155, Ownable {
         tokenDetail.uri = metaDataUri;
 
         tokenDetails[_tokenId] = tokenDetail;
+        giftCodes[_giftCode] = true;
 
-        emit ActiveGiftCode(_to, _tokenId, _tokenType, metaDataUri, _data);
+        emit ActiveGiftCode(_to, _tokenId, _tokenType, metaDataUri, _giftCode, _data);
     }
 
     // Remove tokenId of holder if not have (quantity < 1)
