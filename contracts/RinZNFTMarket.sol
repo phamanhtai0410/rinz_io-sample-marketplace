@@ -92,7 +92,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         address marketOwnerAddress = address(this);
 
         // Approve for market
-        ERC1155(_campaign).setApprovalForAll(marketOwnerAddress, true);
+        // ERC1155(_campaign).setApprovalForAll(marketOwnerAddress, true);
 
         // Market hole token for sale
         ERC1155(_campaign).safeTransferFrom(owner, marketOwnerAddress, _tokenId, _amount, "0x00");
