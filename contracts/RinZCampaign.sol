@@ -18,7 +18,7 @@ contract RinZCampaign is ERC1155, AccessControl {
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
-    event ActiveGiftCode(address to, uint16 tokenId, uint8 tokenType, string uri, string giftCode, bytes data);
+    //event ActiveGiftCode(address to, uint16 tokenId, uint8 tokenType, string uri, string giftCode, bytes data);
     event Mint(address to, uint16 tokenId, uint8 tokenType, string uri, bytes data, uint256 kolProfit, uint256 marketFee);
     event CreateNFTTypeDetail(uint8 tokenType, uint256 totalSupply, uint256 pricePerItem);
 
@@ -98,7 +98,7 @@ contract RinZCampaign is ERC1155, AccessControl {
         symbol = _symbol;
 
         _setupRole(ADMIN_ROLE, _adminAddress);
-        //_setupRole(UPGRADER_ROLE, msg.sender);
+        _setupRole(DEFAULT_ADMIN_ROLE, _adminAddress);
     }
 
     function getSymbol() external view returns (string memory) {
@@ -246,7 +246,17 @@ contract RinZCampaign is ERC1155, AccessControl {
     * @param _data        Data to pass if receiver is contract
     * should update access control only dev or owner can call this function
     */
-    function mintByGiftCode(address _to, uint16 _tokenId, uint8 _tokenType, string memory _giftCode, bytes memory _data) public onlyRole(ADMIN_ROLE) {
+    function mintByGiftCode(
+        address _to, 
+        uint16 _tokenId, 
+        uint8 _tokenType, 
+        string memory _giftCode, 
+        bytes memory _data
+        ) 
+            public
+            onlyRole(ADMIN_ROLE) 
+            returns (uint16)
+        {
         // Check time to buy
         require(block.timestamp >= startTimeToBuy, "It's not time to buy");
         require(block.timestamp <= endTimeToBuy, "It's not time to buy");
@@ -297,7 +307,9 @@ contract RinZCampaign is ERC1155, AccessControl {
         tokenDetails[_tokenId] = tokenDetail;
         giftCodes[_giftCode] = true;
 
-        emit ActiveGiftCode(_to, _tokenId, _tokenType, metaDataUri, _giftCode, _data);
+        return _tokenId;
+
+        //emit ActiveGiftCode(_to, _tokenId, _tokenType, metaDataUri, _giftCode, _data);
     }
 
     function supportsInterface(bytes4 interfaceId) public view override(ERC1155, AccessControl) returns (bool) {

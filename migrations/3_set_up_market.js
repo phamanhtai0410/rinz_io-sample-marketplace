@@ -8,7 +8,7 @@ const fs = require("fs");
  * Init compiled contracts artifacts
  */
 const RinZToken = artifacts.require("RinZToken");
-const RinZCampaign = artifacts.require("RinZCampaign");
+const RinZCampaignFactory = artifacts.require("RinZCampaignFactory");
 const RinZNFTMarket = artifacts.require("RinZNFTMarket");
 
 /**
@@ -46,26 +46,17 @@ module.exports = async function (deployer) {
      */
 
     await deployer.deploy(
-        RinZCampaign,
+        RinZCampaignFactory,
         "https://ipfs.io/ipfs/bafybeibjvqmabyer3cmsrqc5d4lbonxkljytdsp5oecyo4pwxhr256b2dq/",
         false,
         1652758489
     );
-    let iRinZQuobeeCampaign = await RinZCampaign.deployed();
-    await deployer.deploy(
-        RinZCampaign,
-        "https://ipfs.io/ipfs/bafybeib2a2wmje5kyvcxnjnrfc4vikgy2dkql4lkb65pxwgdhibsahffve/",
-        true,
-        1654041600
-    );
-    let iRinZNooCampaign = await RinZCampaign.deployed();
-    wf("QuobeeCampaign", iRinZQuobeeCampaign.address);
-    wf("NooCampaign", iRinZNooCampaign.address);
+    let iRinZCampaignFactory = await RinZCampaignFactory.deployed();
+    wf("RinZCampaignFactory", iRinZCampaignFactory.address);
 
     /**
      * Deploy RinZNFTMarket
      */
-
     await deployer.deploy(RinZNFTMarket);
     let iRinZNFTMarket = await RinZNFTMarket.deployed();
     wf("RinZNFTMarket", iRinZNFTMarket.address);
