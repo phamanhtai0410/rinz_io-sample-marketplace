@@ -9,6 +9,8 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./RinZNFTDetail.sol";
 import "./RinZNFTTypeDetail.sol";
+import "./INFTBox.sol";
+import "./RinZNFTMarket.sol";
 
 contract RinZCampaign is ERC1155, AccessControl {
 
@@ -19,20 +21,20 @@ contract RinZCampaign is ERC1155, AccessControl {
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     //event ActiveGiftCode(address to, uint16 tokenId, uint8 tokenType, string uri, string giftCode, bytes data);
-    event Mint(address to, uint16 tokenId, uint8 tokenType, string uri, bytes data, uint256 kolProfit, uint256 marketFee);
+    event Mint(address to, uint16 tokenId, uint8 tokenType, string uri, uint256 kolProfit, uint256 marketFee);
     event CreateNFTTypeDetail(uint8 tokenType, uint256 totalSupply, uint256 pricePerItem);
+    event OpenBox(address to, uint16 tokenId);
 
     // token decimal
      uint public constant TOKEN_DECIMAL = 10 ** 18;
+    uint8 public constant MAX_OPEN_BOX_UNIT = 10;
+    uint8 public constant NFT_PER_BOX = 1;
 
     // Market place owner address to receive market fee when mint token
     address marketOwnerAddress;
 
     // Campaign Payment Address to receive when mint token
     address campaignPaymentAddress;
-
-    // Base uri of metadata of each tokenId
-    string baseMetadataURI;
 
     // If true tokenId will set by minner
     bool isFixedTokenId;
@@ -44,6 +46,8 @@ contract RinZCampaign is ERC1155, AccessControl {
 
     // Currency use to buy first nft of this campaign
     IERC20 public coinToken;
+
+    INFTBox public nftBox;
 
     // symbol of this campaign
     string public symbol;
@@ -79,7 +83,6 @@ contract RinZCampaign is ERC1155, AccessControl {
     constructor(
         address _marketOwnerAddress,
         address _campaignPaymentAddress,
-        string memory _baseMetadataURI, 
         bool _isFixedTokenId, 
         uint256 _startTimeToBuy,
         uint256 _endTimeToBuy,
@@ -90,7 +93,6 @@ contract RinZCampaign is ERC1155, AccessControl {
         //__AccessControl_init();
         marketOwnerAddress = _marketOwnerAddress;
         campaignPaymentAddress = _campaignPaymentAddress;
-        baseMetadataURI = _baseMetadataURI;
         isFixedTokenId = _isFixedTokenId;
         startTimeToBuy = _startTimeToBuy;
         endTimeToBuy = _endTimeToBuy;
@@ -99,6 +101,14 @@ contract RinZCampaign is ERC1155, AccessControl {
 
         _setupRole(ADMIN_ROLE, _adminAddress);
         _setupRole(DEFAULT_ADMIN_ROLE, _adminAddress);
+    }
+
+    function setCampaignPaymentAddress(address _campaignPaymentAddress) public onlyRole(ADMIN_ROLE) {
+        campaignPaymentAddress = _campaignPaymentAddress;
+    }
+
+    function setCoinToken(IERC20 _coinToken) public onlyRole(ADMIN_ROLE) {
+        coinToken = _coinToken;
     }
 
     function getSymbol() external view returns (string memory) {
@@ -139,15 +149,15 @@ contract RinZCampaign is ERC1155, AccessControl {
     }
 
     // Get metadata uri of tokenId
-    function uri(uint256 _tokenId) override public view returns (string memory) {
-        return string(
-            abi.encodePacked(
-                baseMetadataURI,
-                Strings.toString(_tokenId),
-                ".json"
-            )
-        );
-    }
+//    function uri(uint256 _tokenId) override public view returns (string memory) {
+//        return string(
+//            abi.encodePacked(
+//                baseMetadataURI,
+//                Strings.toString(_tokenId),
+//                ".json"
+//            )
+//        );
+//    }
 
     // Get all nft by owner
     function getNftByOwner(address _owner) external view returns (RinZNFTDetail.NFTDetail[] memory) {
@@ -158,12 +168,7 @@ contract RinZCampaign is ERC1155, AccessControl {
 
             if (amountOfIdUserOwner <= 0) continue;
 
-            RinZNFTDetail.NFTDetail memory nftDetail;
-
-            nftDetail.tokenId = ids[i];
-            nftDetail.tokenType = tokenIdsByType[ids[i]];
-            nftDetail.quantity = balanceOf(_owner, uint256(ids[i]));
-            nftDetail.uri = uri(uint256(ids[i]));
+            RinZNFTDetail.NFTDetail memory nftDetail = tokenDetails[ids[i]];
             nfts[i] = nftDetail;
         }
         return nfts;
@@ -171,17 +176,16 @@ contract RinZCampaign is ERC1155, AccessControl {
 
     /**
       * @dev Mint tokens for id defined (first buy on market)
-    * @param _to          The address to mint tokens to
-    * @param _tokenId     Id to mint
-    * @param _tokenType   Type of token to mint - if box tokenType is 0
-    * @param _data        Data to pass if receiver is contract
+    * @param _tokenId       Id to mint
+    * @param _tokenType     Type of token to mint - if box tokenType is 0
+    * @param _metadataURI   Meta data uri of this token
     */
     function mint(
-        address _to,
         uint16 _tokenId,
         uint8 _tokenType,
-        bytes memory _data
+        string memory _metadataURI
     ) external {
+        address _to = msg.sender;
         // Check time to buy
         require(block.timestamp >= startTimeToBuy, "It's not time to buy");
         require(block.timestamp <= endTimeToBuy, "It's not time to buy");
@@ -214,7 +218,7 @@ contract RinZCampaign is ERC1155, AccessControl {
         uint256 kolProfit = nftTypeDetail.pricePerItem - marketPlaceFee;
         coinToken.transferFrom(_to, campaignPaymentAddress, kolProfit);
             
-        _mint(_to, uint256(_tokenId), 1, _data);
+        _mint(_to, uint256(_tokenId), 1, "");
         
         // Update holders token ids
         _addTokenIdToHolder(_to, _tokenId);
@@ -225,33 +229,33 @@ contract RinZCampaign is ERC1155, AccessControl {
         // Update token id by type
         tokenIdsByType[_tokenId] = _tokenType;
 
-        string memory metaDataUri = uri(_tokenId);
-
         // Update list token id in campaign
         tokenDetail.tokenId = _tokenId;
         tokenDetail.tokenType = _tokenType;
         tokenDetail.quantity = 1;
-        tokenDetail.uri = metaDataUri;
+        tokenDetail.uri = _metadataURI;
+        tokenDetail.isOpened = _tokenType > 0;
+        tokenDetail.owner = _to;
 
         tokenDetails[_tokenId] = tokenDetail;
 
-        emit Mint(_to, _tokenId, _tokenType, metaDataUri, _data, kolProfit, marketPlaceFee);
+        emit Mint(_to, _tokenId, _tokenType, _metadataURI, kolProfit, marketPlaceFee);
     }
 
     /**
       * @dev Mint token for user have gift code
-    * @param _to          The address to mint token to (dev Wallet)
-    * @param _tokenId     Id to mint
-    * @param _tokenType   Token type to mint
-    * @param _data        Data to pass if receiver is contract
+    * @param _to                 The address to mint token to (dev Wallet)
+    * @param _tokenId            Id to mint
+    * @param _tokenType          Token type to mint
+    * @param _metadataURI        Meta data uri of this token
     * should update access control only dev or owner can call this function
     */
     function mintByGiftCode(
-        address _to, 
+        address _to,
         uint16 _tokenId, 
         uint8 _tokenType, 
         string memory _giftCode, 
-        bytes memory _data
+        string memory _metadataURI
         ) 
             public
             onlyRole(ADMIN_ROLE) 
@@ -285,7 +289,7 @@ contract RinZCampaign is ERC1155, AccessControl {
         RinZNFTDetail.NFTDetail memory tokenDetail = tokenDetails[_tokenId];
         require(tokenDetail.quantity == 0, "Token id is minted");
             
-        _mint(_to, uint256(_tokenId), 1, _data);
+        _mint(_to, uint256(_tokenId), 1, "");
         
         // Update holders token ids
         _addTokenIdToHolder(_to, _tokenId);
@@ -296,13 +300,13 @@ contract RinZCampaign is ERC1155, AccessControl {
         // Update token id by type
         tokenIdsByType[_tokenId] = _tokenType;
 
-        string memory metaDataUri = uri(_tokenId);
-
         // Update list token id in campaign
         tokenDetail.tokenId = _tokenId;
         tokenDetail.tokenType = _tokenType;
         tokenDetail.quantity = 1;
-        tokenDetail.uri = metaDataUri;
+        tokenDetail.uri = _metadataURI;
+        tokenDetail.isOpened = _tokenType > 0;
+        tokenDetail.owner = _to;
 
         tokenDetails[_tokenId] = tokenDetail;
         giftCodes[_giftCode] = true;
@@ -311,6 +315,48 @@ contract RinZCampaign is ERC1155, AccessControl {
 
         //emit ActiveGiftCode(_to, _tokenId, _tokenType, metaDataUri, _giftCode, _data);
     }
+
+    function setNFTBox(address contractAddress) external onlyRole(ADMIN_ROLE)
+    {
+        nftBox = INFTBox(contractAddress);
+    }
+
+    /** Open box to NFTToken. */
+    function openBox(uint16 _tokenId) external {
+        address to = msg.sender;
+
+        RinZNFTDetail.NFTDetail storage boxDetail = tokenDetails[_tokenId];
+        require(boxDetail.owner == to, "Token not owned");
+        require(!boxDetail.isOpened, "Box already opened");
+        boxDetail.isOpened = true;
+
+        // Call NFTBox to random token
+        nftBox.openBox(to, 1);
+        emit OpenBox(to, _tokenId);
+    }
+
+    /** Open boxes to NFTToken. */
+    function openBoxes(uint16[] calldata _tokenIds) external {
+        address to = msg.sender;
+        require(_tokenIds.length <= MAX_OPEN_BOX_UNIT, "Open over maximum boxes each time.");
+
+        for (uint256 i = 0; i < _tokenIds.length; ++i) {
+            RinZNFTDetail.NFTDetail memory boxDetail = tokenDetails[_tokenIds[i]];
+            require(boxDetail.owner == to, "Token not owned");
+            require(!boxDetail.isOpened, "Box already opened");
+        }
+
+        uint8 count;
+        for (uint256 i = 0; i < _tokenIds.length; ++i) {
+            RinZNFTDetail.NFTDetail storage boxDetail = tokenDetails[_tokenIds[i]];
+            boxDetail.isOpened = true;
+
+            count += 1;
+            emit OpenBox(to, _tokenIds[i]);
+        }
+        nftBox.openBox(to, count * NFT_PER_BOX);
+    }
+
 
     function supportsInterface(bytes4 interfaceId) public view override(ERC1155, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
@@ -354,9 +400,10 @@ contract RinZCampaign is ERC1155, AccessControl {
     }
 
     /** Marketplace fee */
-    function _marketFee(uint256 _amount) internal pure returns (uint256 fee) {
+    function _marketFee(uint256 _amount) internal view returns (uint256 fee) {
         // TODO check rate
-        fee = (_amount / 1000) * 45;
+        uint16 marketFeePercent = RinZNFTMarket(marketOwnerAddress).getMarketFeePercent();
+        fee = (_amount / 1000) * marketFeePercent;
     }
 
     function _isCustomTokenIdExist(uint16 _tokenId) internal view returns (bool) {
