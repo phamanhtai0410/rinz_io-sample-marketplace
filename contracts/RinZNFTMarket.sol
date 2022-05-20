@@ -91,9 +91,6 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         // Address of marketplace
         address marketOwnerAddress = address(this);
 
-        // Approve for market
-        // ERC1155(_campaign).setApprovalForAll(marketOwnerAddress, true);
-
         // Market hole token for sale
         ERC1155(_campaign).safeTransferFrom(owner, marketOwnerAddress, _tokenId, _amount, "0x00");
 
@@ -127,7 +124,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         totalMarketItem -= 1;
         address marketOwnerAddress = address(this);
         // Approve for owner
-        //ERC1155(marketItem.campaign).setApprovalForAll(marketItem.owner, true);
+        ERC1155(marketItem.campaign).setApprovalForAll(marketItem.owner, true);
         // Transfer token to owner
         ERC1155(marketItem.campaign).safeTransferFrom(
             marketOwnerAddress,
@@ -189,6 +186,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         require(_isCampaignActive(marketItem.campaign), "Campaign have deactivated");
         require(marketItem.amount >= _amount, "Not enough amount");
         require(marketItem.owner != buyer, "You can't buy your own item");
+        require(marketItem.isOnSale, "Token already off chain");
 
         uint256 totalPrice = _pricePerItem * _amount;
         // Total marketFee
@@ -215,7 +213,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         coinToken.transferFrom(buyer, marketItem.owner, kolProfit);
         
         // Market send nft to buyer
-        ERC1155(marketItem.campaign).setApprovalForAll(marketOwnerAddress, true);
+        ERC1155(marketItem.campaign).setApprovalForAll(buyer, true);
         ERC1155(marketItem.campaign).safeTransferFrom(marketOwnerAddress, buyer, marketItem.tokenId, _amount, "0x00");
 
         // update marketItem amount

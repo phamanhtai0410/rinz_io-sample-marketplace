@@ -3,21 +3,20 @@ pragma solidity ^0.8.2;
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+// import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./RinZNFTDetail.sol";
 import "./RinZNFTTypeDetail.sol";
 
-contract RinZCampaign is ERC1155, Ownable {
+contract RinZCampaign is ERC1155, AccessControl {
 
     using RinZNFTDetail for RinZNFTDetail.NFTDetail;
     using RinZNFTTypeDetail for RinZNFTTypeDetail.NFTTypeDetail;
     using Counters for Counters.Counter;
 
-    // bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-    // bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     event ActiveGiftCode(address to, uint16 tokenId, uint8 tokenType, string uri, string giftCode, bytes data);
     event Mint(address to, uint16 tokenId, uint8 tokenType, string uri, bytes data, uint256 kolProfit, uint256 marketFee);
@@ -85,7 +84,8 @@ contract RinZCampaign is ERC1155, Ownable {
         uint256 _startTimeToBuy,
         uint256 _endTimeToBuy,
         IERC20 _coinToken,
-        string memory _symbol
+        string memory _symbol,
+        address _adminAddress
         ) ERC1155("") {
         //__AccessControl_init();
         marketOwnerAddress = _marketOwnerAddress;
@@ -97,7 +97,7 @@ contract RinZCampaign is ERC1155, Ownable {
         coinToken = _coinToken;
         symbol = _symbol;
 
-        //_setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _setupRole(ADMIN_ROLE, _adminAddress);
         //_setupRole(UPGRADER_ROLE, msg.sender);
     }
 
@@ -105,15 +105,15 @@ contract RinZCampaign is ERC1155, Ownable {
         return symbol;
     }
 
-    function customTokenIdToWhiteList(uint16 _tokenId, bool _isActive) public onlyOwner {
+    function customTokenIdToWhiteList(uint16 _tokenId, bool _isActive) public onlyRole(ADMIN_ROLE) {
         customTokenIdsWhiteList[_tokenId] = _isActive;
     }
 
-    function tokenIdIsInWhiteList(uint16 _tokenId) public view onlyOwner returns(bool) {
+    function tokenIdIsInWhiteList(uint16 _tokenId) public view onlyRole(ADMIN_ROLE) returns(bool) {
         return customTokenIdsWhiteList[_tokenId];
     }
 
-    function createNFTTypeDetail(uint256 _totalSupply, uint256 _pricePerItem, bool isBox) public onlyOwner {
+    function createNFTTypeDetail(uint256 _totalSupply, uint256 _pricePerItem, bool isBox) public onlyRole(ADMIN_ROLE) {
         RinZNFTTypeDetail.NFTTypeDetail memory _nftTypeDetail;
         
         uint8 nftType;
@@ -132,7 +132,7 @@ contract RinZCampaign is ERC1155, Ownable {
         emit CreateNFTTypeDetail(nftType, _totalSupply, _pricePerItem);
     }
 
-    function createOpenBoxRate(uint8[] memory _tokenType, uint16[] memory _rates) public onlyOwner {
+    function createOpenBoxRate(uint8[] memory _tokenType, uint16[] memory _rates) public onlyRole(ADMIN_ROLE) {
         for (uint8 i = 0; i < _tokenType.length; i++) {
             openBoxRates[_tokenType[i]] = _rates[i];
         }
@@ -246,7 +246,7 @@ contract RinZCampaign is ERC1155, Ownable {
     * @param _data        Data to pass if receiver is contract
     * should update access control only dev or owner can call this function
     */
-    function mintByGiftCode(address _to, uint16 _tokenId, uint8 _tokenType, string memory _giftCode, bytes memory _data) public onlyOwner {
+    function mintByGiftCode(address _to, uint16 _tokenId, uint8 _tokenType, string memory _giftCode, bytes memory _data) public onlyRole(ADMIN_ROLE) {
         // Check time to buy
         require(block.timestamp >= startTimeToBuy, "It's not time to buy");
         require(block.timestamp <= endTimeToBuy, "It's not time to buy");
@@ -266,7 +266,10 @@ contract RinZCampaign is ERC1155, Ownable {
         if (!isFixedTokenId) {
             tokenIdCounter.increment();
             _tokenId = uint16(tokenIdCounter.current());
-        } 
+        } else {
+            // require custom token id in white list
+            require(_isCustomTokenIdExist(_tokenId), "Token id isn't in whitelist");
+        }
 
         // Check token id is minted
         RinZNFTDetail.NFTDetail memory tokenDetail = tokenDetails[_tokenId];
@@ -295,6 +298,10 @@ contract RinZCampaign is ERC1155, Ownable {
         giftCodes[_giftCode] = true;
 
         emit ActiveGiftCode(_to, _tokenId, _tokenType, metaDataUri, _giftCode, _data);
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view override(ERC1155, AccessControl) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 
     // Remove tokenId of holder if not have (quantity < 1)

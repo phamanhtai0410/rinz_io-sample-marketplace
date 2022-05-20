@@ -16,11 +16,13 @@ contract RinZCampaignFactory is Ownable {
         uint256 startTimeToBuy,
         uint256 endTimeToBuy,
         IERC20 coinToken,
-        string symbol
+        string symbol,
+        address adminAddress
     );
+    event RemoveCampaign(address campaignAddress);
 
     // RinZCampaigns Address list
-    address[] RinZCampaignsAddress;
+    address[] rinZCampaignsAddress;
 
     /*
     *   Create instance of RinZCampaign
@@ -31,6 +33,7 @@ contract RinZCampaignFactory is Ownable {
     *   @param {uint256} _endTimeToBuy - end time to buy nft the first time on KOLs page
     *   @param {IERC20} _coinToken - currency that KOLs want to sell nft campaign
     *   @param {string} _symbol - symbol of this campaign
+    *   @param {address} _adminAddress - admin address have access control to this campaign
     */
     function createCampaign(
         address _marketplaceAddress,
@@ -50,11 +53,12 @@ contract RinZCampaignFactory is Ownable {
             _startTimeToBuy,
             _endTimeToBuy,
             _coinToken,
-            _symbol
+            _symbol,
+            msg.sender
         );
 
         address campaignAddress = address(campaign);
-        RinZCampaignsAddress.push(campaignAddress);
+        rinZCampaignsAddress.push(campaignAddress);
         
         emit CreateCampaign(
             campaignAddress,
@@ -65,11 +69,22 @@ contract RinZCampaignFactory is Ownable {
             _startTimeToBuy,
             _endTimeToBuy,
             _coinToken,
-            _symbol
+            _symbol,
+            msg.sender
         );
     }
 
-    function getAllCampaign() public onlyOwner returns(address[] memory) {
-        return RinZCampaignsAddress;
+    function getAllCampaign() public view onlyOwner returns(address[] memory) {
+        return rinZCampaignsAddress;
+    }
+
+    function removeCampaign(address campaignAddress) public onlyOwner {
+        for (uint256 i; i < rinZCampaignsAddress.length; i++) {
+            if (rinZCampaignsAddress[i] == campaignAddress) {
+                rinZCampaignsAddress[i] = rinZCampaignsAddress[rinZCampaignsAddress.length - 1];
+                rinZCampaignsAddress.pop();
+            }
+        }
+        emit RemoveCampaign(campaignAddress);
     }
 }
