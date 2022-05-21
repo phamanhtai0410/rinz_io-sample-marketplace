@@ -326,7 +326,7 @@ contract RinZCampaign is ERC1155, AccessControl {
         address to = msg.sender;
 
         RinZNFTDetail.NFTDetail storage boxDetail = tokenDetails[_tokenId];
-        require(boxDetail.owner == to, "Token not owned");
+        require(balanceOf(to, uint256(_tokenId)) > 0, "Token not owned");
         require(!boxDetail.isOpened, "Box already opened");
         boxDetail.isOpened = true;
 
@@ -342,7 +342,7 @@ contract RinZCampaign is ERC1155, AccessControl {
 
         for (uint256 i = 0; i < _tokenIds.length; ++i) {
             RinZNFTDetail.NFTDetail memory boxDetail = tokenDetails[_tokenIds[i]];
-            require(boxDetail.owner == to, "Token not owned");
+            require(balanceOf(to, uint256(_tokenIds[i])) > 0, "Token not owned");
             require(!boxDetail.isOpened, "Box already opened");
         }
 
