@@ -11,6 +11,7 @@ contract RinZCampaignFactory is AccessControl {
     event CreateCampaign(
         address campaignAddress,
         address marketplaceAddress,
+        string baseMetadataUri,
         address campaignPaymentAddress,
         bool isFixedTokenId,
         uint256 startTimeToBuy,
@@ -33,7 +34,9 @@ contract RinZCampaignFactory is AccessControl {
 
     /*
     *   Create instance of RinZCampaign
+    *   @param {address} _marketplaceAddress - marketplace address to sale this campaign
     *   @param {address} _campaignPaymentAddress - payment address to receive coinToken when nft have sold
+    *   @param {string} _baseMetadataUri - baseMetadataUri of this campaign
     *   @param {bool} _isFixedTokenId - if true token id of nft is set by owner, else auto increment
     *   @param {uint256} _startTimeToBuy - start time to buy nft the first time on KOLs page
     *   @param {uint256} _endTimeToBuy - end time to buy nft the first time on KOLs page
@@ -44,6 +47,7 @@ contract RinZCampaignFactory is AccessControl {
     function createCampaign(
         address _marketplaceAddress,
         address _campaignPaymentAddress,
+        string memory _baseMetadataUri,
         bool _isFixedTokenId, 
         uint256 _startTimeToBuy,
         uint256 _endTimeToBuy,
@@ -52,6 +56,7 @@ contract RinZCampaignFactory is AccessControl {
         ) public onlyRole(ADMIN_ROLE) {
         RinZCampaign campaign = new RinZCampaign(
             _marketplaceAddress,
+            _baseMetadataUri,
             _campaignPaymentAddress,
             _isFixedTokenId,
             _startTimeToBuy,
@@ -67,6 +72,7 @@ contract RinZCampaignFactory is AccessControl {
         emit CreateCampaign(
             campaignAddress,
             _marketplaceAddress,
+            _baseMetadataUri,
             _campaignPaymentAddress,
             _isFixedTokenId,
             _startTimeToBuy,

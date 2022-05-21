@@ -134,12 +134,24 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         address buyer = msg.sender;
         // Address of marketplace
         address marketOwnerAddress = address(this);
-        RinZNFTMarketItem.MarketItem memory marketItem = itemSellOnMarket[_marketId];
+        RinZNFTMarketItem.MarketItem storage marketItem = itemSellOnMarket[_marketId];
 
+        require(_pricePerItem >= marketItem.pricePerItem, "Buy price is too low");
+
+        require(marketItem.pricePerItem <= coinToken.balanceOf(buyer), "User need hold enough Token to buy this nft");
+
+        require(_amount > 0, "Amount to buy must greater than 0");
         require(_isCampaignActive(marketItem.campaign), "Campaign have deactivated");
         require(marketItem.amount >= _amount, "Not enough amount");
         require(marketItem.owner != buyer, "You can't buy your own item");
         require(marketItem.isOnSale, "Token already off chain");
+
+        // update marketItem amount
+        if (marketItem.amount - _amount == 0) {
+            marketItem.isOnSale = false;
+            totalMarketItem -= 1;
+        }
+        marketItem.amount = marketItem.amount - _amount;
 
         uint256 totalPrice = _pricePerItem * _amount;
         // Total marketFee
@@ -168,9 +180,6 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         // Market send nft to buyer
         ERC1155(marketItem.campaign).setApprovalForAll(buyer, true);
         ERC1155(marketItem.campaign).safeTransferFrom(marketOwnerAddress, buyer, marketItem.tokenId, _amount, "0x00");
-
-        // update marketItem amount
-        totalMarketItem -= 1;
 
         emit Buy(_marketId, buyer, _pricePerItem, _amount, commissionFee, marketPlaceFee);
     }

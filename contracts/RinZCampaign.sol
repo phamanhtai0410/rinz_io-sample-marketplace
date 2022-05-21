@@ -20,7 +20,7 @@ contract RinZCampaign is ERC1155, AccessControl {
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
-    //event ActiveGiftCode(address to, uint16 tokenId, uint8 tokenType, string uri, string giftCode, bytes data);
+    event ActiveGiftCode(address to, uint16 tokenId, uint8 tokenType, string uri, string giftCode);
     event Mint(address to, uint16 tokenId, uint8 tokenType, string uri, uint256 kolProfit, uint256 marketFee);
     event CreateNFTTypeDetail(uint8 tokenType, uint256 totalSupply, uint256 pricePerItem);
     event OpenBox(address to, uint16 tokenId);
@@ -31,18 +31,21 @@ contract RinZCampaign is ERC1155, AccessControl {
     uint8 public constant NFT_PER_BOX = 1;
 
     // Market place owner address to receive market fee when mint token
-    address marketOwnerAddress;
+    address public marketOwnerAddress;
+
+    // Base meta data uri 
+    string public baseMetadataUri;
 
     // Campaign Payment Address to receive when mint token
-    address campaignPaymentAddress;
+    address public campaignPaymentAddress;
 
     // If true tokenId will set by minner
-    bool isFixedTokenId;
+    bool public isFixedTokenId;
     
     // Start time to buy first nft on this campaign
-    uint256 startTimeToBuy;
+    uint256 public startTimeToBuy;
     // End time to buy first nft on this campaign
-    uint256 endTimeToBuy;
+    uint256 public endTimeToBuy;
 
     // Currency use to buy first nft of this campaign
     IERC20 public coinToken;
@@ -82,6 +85,7 @@ contract RinZCampaign is ERC1155, AccessControl {
 
     constructor(
         address _marketOwnerAddress,
+        string memory _baseMetadataUri,
         address _campaignPaymentAddress,
         bool _isFixedTokenId, 
         uint256 _startTimeToBuy,
@@ -92,6 +96,7 @@ contract RinZCampaign is ERC1155, AccessControl {
         ) ERC1155("") {
         //__AccessControl_init();
         marketOwnerAddress = _marketOwnerAddress;
+        baseMetadataUri = _baseMetadataUri;
         campaignPaymentAddress = _campaignPaymentAddress;
         isFixedTokenId = _isFixedTokenId;
         startTimeToBuy = _startTimeToBuy;
@@ -149,15 +154,17 @@ contract RinZCampaign is ERC1155, AccessControl {
     }
 
     // Get metadata uri of tokenId
-//    function uri(uint256 _tokenId) override public view returns (string memory) {
-//        return string(
-//            abi.encodePacked(
-//                baseMetadataURI,
-//                Strings.toString(_tokenId),
-//                ".json"
-//            )
-//        );
-//    }
+   function uri(uint256 _tokenId) override public view returns (string memory) {
+        return string(
+            abi.encodePacked(
+                baseMetadataUri,
+                Strings.toHexString(uint256(uint160(address(this))), 20),
+                "/",
+                Strings.toString(_tokenId),
+                ".json"
+           )
+        );
+    }
 
     // Get all nft by owner
     function getNftByOwner(address _owner) external view returns (RinZNFTDetail.NFTDetail[] memory) {
@@ -175,15 +182,13 @@ contract RinZCampaign is ERC1155, AccessControl {
     }
 
     /**
-      * @dev Mint tokens for id defined (first buy on market)
+    * @dev Mint tokens for id defined (first buy on market)
     * @param _tokenId       Id to mint
     * @param _tokenType     Type of token to mint - if box tokenType is 0
-    * @param _metadataURI   Meta data uri of this token
     */
     function mint(
         uint16 _tokenId,
-        uint8 _tokenType,
-        string memory _metadataURI
+        uint8 _tokenType
     ) external {
         address _to = msg.sender;
         // Check time to buy
@@ -212,6 +217,8 @@ contract RinZCampaign is ERC1155, AccessControl {
         require(tokenDetail.quantity == 0, "Token id is minted");
 
         uint256 marketPlaceFee = _marketFee(nftTypeDetail.pricePerItem);
+
+        require(nftTypeDetail.pricePerItem <= coinToken.balanceOf(_to), "User need hold enough Token to buy this nft");
         // Fee for market
         coinToken.transferFrom(_to, marketOwnerAddress, marketPlaceFee);
         // Profit for the kol (total price - marketPlaceFee - discountFee)
@@ -229,17 +236,19 @@ contract RinZCampaign is ERC1155, AccessControl {
         // Update token id by type
         tokenIdsByType[_tokenId] = _tokenType;
 
+        string memory metaDataUri = uri(_tokenId);
+
         // Update list token id in campaign
         tokenDetail.tokenId = _tokenId;
         tokenDetail.tokenType = _tokenType;
         tokenDetail.quantity = 1;
-        tokenDetail.uri = _metadataURI;
+        tokenDetail.uri = metaDataUri;
         tokenDetail.isOpened = _tokenType > 0;
         tokenDetail.owner = _to;
 
         tokenDetails[_tokenId] = tokenDetail;
 
-        emit Mint(_to, _tokenId, _tokenType, _metadataURI, kolProfit, marketPlaceFee);
+        emit Mint(_to, _tokenId, _tokenType, metaDataUri, kolProfit, marketPlaceFee);
     }
 
     /**
@@ -247,15 +256,13 @@ contract RinZCampaign is ERC1155, AccessControl {
     * @param _to                 The address to mint token to (dev Wallet)
     * @param _tokenId            Id to mint
     * @param _tokenType          Token type to mint
-    * @param _metadataURI        Meta data uri of this token
     * should update access control only dev or owner can call this function
     */
     function mintByGiftCode(
         address _to,
         uint16 _tokenId, 
         uint8 _tokenType, 
-        string memory _giftCode, 
-        string memory _metadataURI
+        string memory _giftCode
         ) 
             public
             onlyRole(ADMIN_ROLE) 
@@ -300,20 +307,22 @@ contract RinZCampaign is ERC1155, AccessControl {
         // Update token id by type
         tokenIdsByType[_tokenId] = _tokenType;
 
+        string memory metaDataUri = uri(_tokenId);
+
         // Update list token id in campaign
         tokenDetail.tokenId = _tokenId;
         tokenDetail.tokenType = _tokenType;
         tokenDetail.quantity = 1;
-        tokenDetail.uri = _metadataURI;
+        tokenDetail.uri = metaDataUri;
         tokenDetail.isOpened = _tokenType > 0;
         tokenDetail.owner = _to;
 
         tokenDetails[_tokenId] = tokenDetail;
         giftCodes[_giftCode] = true;
 
-        return _tokenId;
+        emit ActiveGiftCode(_to, _tokenId, _tokenType, metaDataUri, _giftCode);
 
-        //emit ActiveGiftCode(_to, _tokenId, _tokenType, metaDataUri, _giftCode, _data);
+        return _tokenId;
     }
 
     function setNFTBox(address contractAddress) external onlyRole(ADMIN_ROLE)
