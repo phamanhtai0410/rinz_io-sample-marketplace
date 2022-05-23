@@ -366,6 +366,15 @@ contract RinZCampaign is ERC1155, AccessControl {
         nftBox.openBox(to, count * NFT_PER_BOX);
     }
 
+    /** Get token type info */
+    function getTokenTypeInfo(uint8 _tokenType) external view returns (uint256 _totalSupply, uint256 _mintedSupply, uint256 _pricePerItem) {
+        RinZNFTTypeDetail.NFTTypeDetail memory typeDetail = nftTypeDetails[_tokenType];
+        _totalSupply = typeDetail.totalSupply;
+        _pricePerItem = typeDetail.pricePerItem;
+        _mintedSupply = nftTypeSupply[_tokenType];
+
+        return (_totalSupply, _mintedSupply, _pricePerItem);
+    }
 
     function supportsInterface(bytes4 interfaceId) public view override(ERC1155, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
