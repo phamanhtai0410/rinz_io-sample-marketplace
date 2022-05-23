@@ -321,6 +321,7 @@ contract RinZCampaign is ERC1155, AccessControl {
         giftCodes[_giftCode] = true;
 
         emit ActiveGiftCode(_to, _tokenId, _tokenType, metaDataUri, _giftCode);
+        emit Mint(_to, _tokenId, _tokenType, metaDataUri, 0, 0);
 
         return _tokenId;
     }
