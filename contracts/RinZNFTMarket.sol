@@ -27,8 +27,8 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         string metadataUri,
         uint256 amount
     );
-    event Buy(uint256 marketId, address buyer, uint256 pricePerItem, uint256 amount, uint256 commissionFee, uint256 marketPlaceFee);
-    event DeactiveSale(uint256 marketId);
+    event Buy(uint256 marketId, address campaign, uint256 tokenId, address buyer, uint256 pricePerItem, uint256 amount, uint256 commissionFee, uint256 marketPlaceFee);
+    event DeactiveSale(uint256 marketId, address campaign, uint256 tokenId);
 
     uint public constant TOKEN_DECIMAL = 10 ** 18;
 
@@ -124,7 +124,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
             "0x00"
         );
 
-        emit DeactiveSale(marketId);
+        emit DeactiveSale(marketId, marketItem.campaign, marketItem.tokenId);
     }
 
     /** Buy token */
@@ -181,7 +181,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         ERC1155(marketItem.campaign).setApprovalForAll(buyer, true);
         ERC1155(marketItem.campaign).safeTransferFrom(marketOwnerAddress, buyer, marketItem.tokenId, _amount, "0x00");
 
-        emit Buy(_marketId, buyer, _pricePerItem, _amount, commissionFee, marketPlaceFee);
+        emit Buy(_marketId, marketItem.campaign, marketItem.tokenId, buyer, _pricePerItem, _amount, commissionFee, marketPlaceFee);
     }
 
     function changeCampaignInfo(
