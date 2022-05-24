@@ -128,23 +128,34 @@ contract RinZCampaign is ERC1155, AccessControl {
         return customTokenIdsWhiteList[_tokenId];
     }
 
-    function createNFTTypeDetail(uint256 _totalSupply, uint256 _pricePerItem, bool isBox) public onlyRole(ADMIN_ROLE) {
+    function createNFTBoxDetail(uint256 _totalSupply, uint256 _pricePerItem) public onlyRole(ADMIN_ROLE) {
         RinZNFTTypeDetail.NFTTypeDetail memory _nftTypeDetail;
         
-        uint8 nftType;
-        
-        if (isBox) nftType = 0; // typeId of box is 0
-        else {
-            typeCounter.increment();
-            nftType = uint8(typeCounter.current());
-        }
-        _nftTypeDetail.nftType = nftType;
+        _nftTypeDetail.nftType = 0;
         _nftTypeDetail.totalSupply = _totalSupply;
         _nftTypeDetail.pricePerItem = _pricePerItem * TOKEN_DECIMAL;
 
-        nftTypeDetails[nftType] = _nftTypeDetail;
+        nftTypeDetails[0] = _nftTypeDetail;
 
-        emit CreateNFTTypeDetail(nftType, _totalSupply, _pricePerItem);
+        emit CreateNFTTypeDetail(0, _totalSupply, _pricePerItem);
+    }
+
+    function createListNFTTypeDetail(uint256[] memory _totalSupplies, uint256[] memory _pricePerItems) public onlyRole(ADMIN_ROLE) {
+        RinZNFTTypeDetail.NFTTypeDetail memory _nftTypeDetail;
+        
+        for (uint256 i = 0; i < _totalSupplies.length; i++) {
+            typeCounter.increment();
+
+            uint8 nftType = uint8(typeCounter.current());
+
+            _nftTypeDetail.nftType = nftType;
+            _nftTypeDetail.totalSupply = _totalSupplies[i];
+            _nftTypeDetail.pricePerItem = _pricePerItems[i];
+
+            nftTypeDetails[nftType] = _nftTypeDetail;
+
+            emit CreateNFTTypeDetail(nftType, _totalSupplies[i], _pricePerItems[i]);
+        }
     }
 
     function createOpenBoxRate(uint8[] memory _tokenType, uint16[] memory _rates) public onlyRole(ADMIN_ROLE) {
