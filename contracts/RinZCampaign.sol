@@ -137,10 +137,12 @@ contract RinZCampaign is ERC1155, AccessControl {
 
         nftTypeDetails[0] = _nftTypeDetail;
 
-        emit CreateNFTTypeDetail(0, _totalSupply, _pricePerItem);
+        emit CreateNFTTypeDetail(0, _totalSupply, _pricePerItem * TOKEN_DECIMAL);
     }
 
     function createListNFTTypeDetail(uint256[] memory _totalSupplies, uint256[] memory _pricePerItems) public onlyRole(ADMIN_ROLE) {
+        require(_totalSupplies.length == _pricePerItems.length, "Total supplies and Price per items must be same length");
+
         RinZNFTTypeDetail.NFTTypeDetail memory _nftTypeDetail;
         
         for (uint256 i = 0; i < _totalSupplies.length; i++) {
@@ -150,11 +152,11 @@ contract RinZCampaign is ERC1155, AccessControl {
 
             _nftTypeDetail.nftType = nftType;
             _nftTypeDetail.totalSupply = _totalSupplies[i];
-            _nftTypeDetail.pricePerItem = _pricePerItems[i];
+            _nftTypeDetail.pricePerItem = _pricePerItems[i] * TOKEN_DECIMAL;
 
             nftTypeDetails[nftType] = _nftTypeDetail;
 
-            emit CreateNFTTypeDetail(nftType, _totalSupplies[i], _pricePerItems[i]);
+            emit CreateNFTTypeDetail(nftType, _totalSupplies[i], _pricePerItems[i] * TOKEN_DECIMAL);
         }
     }
 
