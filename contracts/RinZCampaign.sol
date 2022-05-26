@@ -26,7 +26,7 @@ contract RinZCampaign is ERC1155, AccessControl {
     event OpenBox(address to, uint16 tokenId);
 
     // token decimal
-     uint public constant TOKEN_DECIMAL = 10 ** 18;
+    uint public constant TOKEN_DECIMAL = 10 ** 18;
     uint8 public constant MAX_OPEN_BOX_UNIT = 10;
     uint8 public constant NFT_PER_BOX = 1;
 
@@ -435,7 +435,7 @@ contract RinZCampaign is ERC1155, AccessControl {
     function _marketFee(uint256 _amount) internal view returns (uint256 fee) {
         // TODO check rate
         uint16 marketFeePercent = RinZNFTMarket(marketOwnerAddress).getMarketFeePercent();
-        fee = (_amount / 1000) * marketFeePercent;
+        fee = (_amount / 10000) * marketFeePercent;
     }
 
     function _isCustomTokenIdExist(uint16 _tokenId) internal view returns (bool) {

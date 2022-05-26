@@ -34,7 +34,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
 
     IERC20 public coinToken;
 
-    uint16 public marketFeePercent = 45;  // 45/1000 = 4.5%
+    uint16 public marketFeePercent = 450;  // 450/10000 = 4.5%
 
     Counters.Counter public marketIdCounter;
 
@@ -106,8 +106,9 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
 
     function deactiveSale(uint256 marketId) external {
         RinZNFTMarketItem.MarketItem storage marketItem = itemSellOnMarket[marketId];
-        require(marketItem.owner == msg.sender, "Token not owned");
+
         require(marketItem.isOnSale, "Token already off chain");
+        require(marketItem.owner == msg.sender, "Token not owned");
         
         marketItem.isOnSale = false;
         // Decrease total marketItem
@@ -197,7 +198,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
     }
 
     function setMarketFeePercent(uint16 _marketFeePercent) public onlyOwner {
-        require(_marketFeePercent < 1000, "Market fee percent must be less than 100%");
+        require(_marketFeePercent < 10000, "Market fee percent must be less than 100%");
         marketFeePercent = _marketFeePercent;
     }
 
@@ -218,12 +219,12 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
     /** Marketplace fee */
     function _marketFee(uint256 _amount) internal view returns (uint256 fee) {
         // TODO check rate
-        fee = (_amount / 1000) * marketFeePercent;
+        fee = (_amount / 10000) * marketFeePercent;
     }
 
     /** Discount fee for kol */
     function _discountFeeForCampaignOwner(uint256 _amount, uint256 _percent) internal pure returns (uint256 fee) {
         // TODO check rate
-        fee = _amount * _percent / 1000;
+        fee = _amount * _percent / 10000;
     }
 }
