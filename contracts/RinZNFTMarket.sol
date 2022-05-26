@@ -93,7 +93,7 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         marketItem.tokenId = _tokenId;
         marketItem.campaign = _campaign;
         marketItem.amount = _amount;
-        marketItem.pricePerItem = _pricePerItem * TOKEN_DECIMAL;
+        marketItem.pricePerItem = _pricePerItem;
         marketItem.metadataUri = metadataUri;
         marketItem.owner = owner;
         marketItem.isOnSale = true;
