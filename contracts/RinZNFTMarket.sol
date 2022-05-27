@@ -40,7 +40,10 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
 
     uint256 public totalMarketItem = 0;
 
+    // mapping campaign to campaign detail
     mapping (address => RinZNFTMarketCampaign.MarketCampaign) public campaignSellOnMarket;
+
+    // mapping marketId to market item detail
     mapping (uint256 => RinZNFTMarketItem.MarketItem) public itemSellOnMarket;
 
 
@@ -48,6 +51,12 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         IERC20 _coinToken
     ) public onlyOwner {
         coinToken = _coinToken;
+    }
+
+    // withdraw cointoken from market
+
+    function withdraw() external onlyOwner {
+        coinToken.transfer(msg.sender, coinToken.balanceOf(address(this)));
     }
 
     /*New campaign should call this function to sale item on market*/
