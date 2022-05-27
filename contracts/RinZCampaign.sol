@@ -42,8 +42,10 @@ contract RinZCampaign is ERC1155, AccessControl {
     // If true tokenId will set by minner
     bool public isFixedTokenId;
     
-    // Start time to buy first nft on this campaign
-    uint256 public startTimeToBuy;
+    // Start time to buy for whitelist
+    uint256 public whitelistStartTime;
+    // Start time to public buy on this campaign
+    uint256 public publicStartTime;
     // End time to buy first nft on this campaign
     uint256 public endTimeToBuy;
 
@@ -65,9 +67,6 @@ contract RinZCampaign is ERC1155, AccessControl {
     // Mapping token type to campaign detail on this campaign
     mapping (uint8 => RinZNFTTypeDetail.NFTTypeDetail) public nftTypeDetails;
 
-    // Mapping token type to rate of openBox action
-    mapping (uint8 => uint16) public openBoxRates;
-
     // Mapping token type to supply have minted
     mapping (uint8 => uint256) public nftTypeSupply;
 
@@ -83,12 +82,19 @@ contract RinZCampaign is ERC1155, AccessControl {
     // Mapping gift code is active
     mapping (string => bool) public giftCodes;
 
+    // mapping white list address to amount can buy
+    mapping (address => uint256) public whitelistBuyable;
+
+    // total whitelist have bought
+    uint256 public whitelistRoundBought;
+
     constructor(
         address _marketOwnerAddress,
         string memory _baseMetadataUri,
         address _campaignPaymentAddress,
         bool _isFixedTokenId, 
-        uint256 _startTimeToBuy,
+        uint256 _whitelistStartTime,
+        uint256 _publicStartTime,
         uint256 _endTimeToBuy,
         IERC20 _coinToken,
         string memory _symbol,
@@ -99,7 +105,8 @@ contract RinZCampaign is ERC1155, AccessControl {
         baseMetadataUri = _baseMetadataUri;
         campaignPaymentAddress = _campaignPaymentAddress;
         isFixedTokenId = _isFixedTokenId;
-        startTimeToBuy = _startTimeToBuy;
+        whitelistStartTime = _whitelistStartTime;
+        publicStartTime = _publicStartTime;
         endTimeToBuy = _endTimeToBuy;
         coinToken = _coinToken;
         symbol = _symbol;
@@ -108,11 +115,11 @@ contract RinZCampaign is ERC1155, AccessControl {
         _setupRole(DEFAULT_ADMIN_ROLE, _adminAddress);
     }
 
-    function setCampaignPaymentAddress(address _campaignPaymentAddress) public onlyRole(ADMIN_ROLE) {
+    function setCampaignPaymentAddress(address _campaignPaymentAddress) external onlyRole(ADMIN_ROLE) {
         campaignPaymentAddress = _campaignPaymentAddress;
     }
 
-    function setCoinToken(IERC20 _coinToken) public onlyRole(ADMIN_ROLE) {
+    function setCoinToken(IERC20 _coinToken) external onlyRole(ADMIN_ROLE) {
         coinToken = _coinToken;
     }
 
@@ -120,28 +127,44 @@ contract RinZCampaign is ERC1155, AccessControl {
         return symbol;
     }
 
-    function customTokenIdToWhiteList(uint16 _tokenId, bool _isActive) public onlyRole(ADMIN_ROLE) {
+    function customTokenIdToWhiteList(uint16 _tokenId, bool _isActive) external onlyRole(ADMIN_ROLE) {
         customTokenIdsWhiteList[_tokenId] = _isActive;
     }
 
-    function tokenIdIsInWhiteList(uint16 _tokenId) public view onlyRole(ADMIN_ROLE) returns(bool) {
+    function tokenIdIsInWhiteList(uint16 _tokenId) external view onlyRole(ADMIN_ROLE) returns(bool) {
         return customTokenIdsWhiteList[_tokenId];
     }
 
-    function createNFTBoxDetail(uint256 _totalSupply, uint256 _pricePerItem) public onlyRole(ADMIN_ROLE) {
+    // Get list token details
+    function getTokenTypeDetails() external view returns (RinZNFTTypeDetail.NFTTypeDetail[] memory) {
+        uint256 totalTokenType = typeCounter.current();
+        RinZNFTTypeDetail.NFTTypeDetail[] memory typeDetails = new RinZNFTTypeDetail.NFTTypeDetail[](totalTokenType - 1);
+
+        for (uint256 i = 1; i < totalTokenType; i++) {
+            RinZNFTTypeDetail.NFTTypeDetail memory typeDetail = nftTypeDetails[uint8(i)];
+
+            typeDetails[i - 1] = typeDetail;
+        }
+
+        return typeDetails;
+    }
+
+    function createNFTBoxDetail(uint256 _totalSupply, uint256 _pricePerItem) external onlyRole(ADMIN_ROLE) {
         RinZNFTTypeDetail.NFTTypeDetail memory _nftTypeDetail;
         
         _nftTypeDetail.nftType = 0;
         _nftTypeDetail.totalSupply = _totalSupply;
         _nftTypeDetail.pricePerItem = _pricePerItem;
+        _nftTypeDetail.rate = 0;
 
         nftTypeDetails[0] = _nftTypeDetail;
 
         emit CreateNFTTypeDetail(0, _totalSupply, _pricePerItem);
     }
 
-    function createListNFTTypeDetail(uint256[] memory _totalSupplies, uint256[] memory _pricePerItems) public onlyRole(ADMIN_ROLE) {
+    function createListNFTTypeDetail(uint256[] memory _totalSupplies, uint256[] memory _pricePerItems, uint256[] memory _rates) external onlyRole(ADMIN_ROLE) {
         require(_totalSupplies.length == _pricePerItems.length, "Total supplies and Price per items must be same length");
+        require(_totalSupplies.length == _rates.length, "Total supplies and rate list must be same length");
 
         RinZNFTTypeDetail.NFTTypeDetail memory _nftTypeDetail;
         
@@ -153,6 +176,7 @@ contract RinZCampaign is ERC1155, AccessControl {
             _nftTypeDetail.nftType = nftType;
             _nftTypeDetail.totalSupply = _totalSupplies[i];
             _nftTypeDetail.pricePerItem = _pricePerItems[i];
+            _nftTypeDetail.rate = _rates[i];
 
             nftTypeDetails[nftType] = _nftTypeDetail;
 
@@ -160,9 +184,10 @@ contract RinZCampaign is ERC1155, AccessControl {
         }
     }
 
-    function createOpenBoxRate(uint8[] memory _tokenType, uint16[] memory _rates) public onlyRole(ADMIN_ROLE) {
-        for (uint8 i = 0; i < _tokenType.length; i++) {
-            openBoxRates[_tokenType[i]] = _rates[i];
+    function setWhitelistBuyable(address[] memory _whitelistAddresses, uint256[] memory _buyableAmountList) external onlyRole(ADMIN_ROLE) {
+        require(_whitelistAddresses.length == _buyableAmountList.length, "Whitelist and buyable amount list must be same length");
+        for (uint256 i = 0; i < _whitelistAddresses.length; i++) {
+            whitelistBuyable[_whitelistAddresses[i]] = _buyableAmountList[i];
         }
     }
 
@@ -199,13 +224,10 @@ contract RinZCampaign is ERC1155, AccessControl {
     * @param _tokenId       Id to mint
     * @param _tokenType     Type of token to mint - if box tokenType is 0
     */
-    function mint(
-        uint16 _tokenId,
-        uint8 _tokenType
-    ) external {
+    function mint(uint16 _tokenId, uint8 _tokenType) external {
         address _to = msg.sender;
         // Check time to buy
-        require(block.timestamp >= startTimeToBuy, "It's not time to buy");
+        require(block.timestamp >= publicStartTime, "It's not time to buy public sale");
         require(block.timestamp <= endTimeToBuy, "It's not time to buy");
         
         // Check token type is exist in this campaign
@@ -277,12 +299,12 @@ contract RinZCampaign is ERC1155, AccessControl {
         uint8 _tokenType, 
         string memory _giftCode
         ) 
-            public
+            external
             onlyRole(ADMIN_ROLE) 
             returns (uint16)
         {
         // Check time to buy
-        require(block.timestamp >= startTimeToBuy, "It's not time to buy");
+        require(block.timestamp >= publicStartTime, "It's not time to buy public sale");
         require(block.timestamp <= endTimeToBuy, "It's not time to buy");
 
         // Check giftCode is activated
@@ -339,6 +361,81 @@ contract RinZCampaign is ERC1155, AccessControl {
         return _tokenId;
     }
 
+
+    /**
+    * @dev Address in whitelist Mint tokens for id defined (first buy on market)
+    * @param _tokenId       Id to mint
+    * @param _tokenType     Type of token to mint - if box tokenType is 0
+    */
+    function whitelistMint(uint16 _tokenId, uint8 _tokenType) external {
+        address _to = msg.sender;
+        // Check time to buy
+        require(block.timestamp >= whitelistStartTime, "It's not time to buy whitelist sale");
+        require(block.timestamp <= endTimeToBuy, "It's not time to buy");
+
+        // Check whitelist can mint
+        require(whitelistBuyable[_to] > 0, "User not in whitelist or limit reached");
+        
+        // Check token type is exist in this campaign
+        RinZNFTTypeDetail.NFTTypeDetail memory nftTypeDetail = nftTypeDetails[_tokenType];
+        require(nftTypeDetail.totalSupply > 0, "Token type is not exist");
+        
+        // Check token type supply
+        uint256 nftTypeHaveMinted = nftTypeSupply[_tokenType];
+        require(nftTypeDetail.totalSupply > nftTypeHaveMinted, "Token run out");
+
+        // If not fixed token id, id is auto increment
+        if (!isFixedTokenId) {
+            tokenIdCounter.increment();
+            _tokenId = uint16(tokenIdCounter.current());
+        } else {
+            // require custom token id in white list
+            require(_isCustomTokenIdExist(_tokenId), "Token id isn't in whitelist");
+        }
+
+        // Check token id is minted
+        RinZNFTDetail.NFTDetail memory tokenDetail = tokenDetails[_tokenId];
+        require(tokenDetail.quantity == 0, "Token id is minted");
+
+        uint256 marketPlaceFee = _marketFee(nftTypeDetail.pricePerItem);
+
+        require(nftTypeDetail.pricePerItem <= coinToken.balanceOf(_to), "User need hold enough Token to buy this nft");
+        // Fee for market
+        coinToken.transferFrom(_to, marketOwnerAddress, marketPlaceFee);
+        // Profit for the kol (total price - marketPlaceFee - discountFee)
+        uint256 kolProfit = nftTypeDetail.pricePerItem - marketPlaceFee;
+        coinToken.transferFrom(_to, campaignPaymentAddress, kolProfit);
+            
+        _mint(_to, uint256(_tokenId), 1, "");
+
+        // update whitelistBought and whitelistRoundBought
+        whitelistRoundBought += 1;
+        whitelistBuyable[_to] -= 1;
+        
+        // Update holders token ids
+        _addTokenIdToHolder(_to, _tokenId);
+        
+        // Update nft type supply have minted
+        nftTypeSupply[_tokenType] = nftTypeHaveMinted + 1;
+
+        // Update token id by type
+        tokenIdsByType[_tokenId] = _tokenType;
+
+        string memory metaDataUri = uri(_tokenId);
+
+        // Update list token id in campaign
+        tokenDetail.tokenId = _tokenId;
+        tokenDetail.tokenType = _tokenType;
+        tokenDetail.quantity = 1;
+        tokenDetail.uri = metaDataUri;
+        tokenDetail.isOpened = _tokenType > 0;
+        tokenDetail.owner = _to;
+
+        tokenDetails[_tokenId] = tokenDetail;
+
+        emit Mint(_to, _tokenId, _tokenType, metaDataUri, kolProfit, marketPlaceFee);
+    }
+
     function setNFTBox(address contractAddress) external onlyRole(ADMIN_ROLE)
     {
         nftBox = INFTBox(contractAddress);
@@ -355,6 +452,7 @@ contract RinZCampaign is ERC1155, AccessControl {
 
         // Call NFTBox to random token
         nftBox.openBox(to, 1);
+        
         emit OpenBox(to, _tokenId);
     }
 
@@ -373,6 +471,9 @@ contract RinZCampaign is ERC1155, AccessControl {
         for (uint256 i = 0; i < _tokenIds.length; ++i) {
             RinZNFTDetail.NFTDetail storage boxDetail = tokenDetails[_tokenIds[i]];
             boxDetail.isOpened = true;
+
+            // Burn box after open
+            _burn(to, uint256(_tokenIds[i]), 1);
 
             count += 1;
             emit OpenBox(to, _tokenIds[i]);
