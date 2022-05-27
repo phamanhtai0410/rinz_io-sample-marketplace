@@ -215,6 +215,10 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         return marketFeePercent;
     }
 
+    function getMarketItemInfo(uint256 _marketId) external view returns (RinZNFTMarketItem.MarketItem memory) {
+        return itemSellOnMarket[_marketId];
+    }
+
     function _isCampaignActive(address _campaign) public view returns (bool) {
         RinZNFTMarketCampaign.MarketCampaign memory marketCampaign_ = campaignSellOnMarket[_campaign];
         return marketCampaign_.isActiveSale;
