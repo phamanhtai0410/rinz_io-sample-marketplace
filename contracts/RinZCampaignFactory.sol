@@ -10,11 +10,11 @@ contract RinZCampaignFactory is AccessControl {
 
     event CreateCampaign(
         address campaignAddress,
-        address marketplaceAddress,
         string baseMetadataUri,
         address campaignPaymentAddress,
         bool isFixedTokenId,
-        uint256 startTimeToBuy,
+        uint256 whitelistStartTime,
+        uint256 publicStartTime,
         uint256 endTimeToBuy,
         IERC20 coinToken,
         string symbol,
@@ -25,57 +25,63 @@ contract RinZCampaignFactory is AccessControl {
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     // RinZCampaigns Address list
-    address[] rinZCampaignsAddress;
+    address[] public rinZCampaignsAddress;
 
-    constructor() {
+    // marketplace address
+    address public marketAddress;
+
+    constructor(address _marketAddress) {
+        marketAddress = _marketAddress;
+
         _setupRole(ADMIN_ROLE, msg.sender);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
+
     /*
     *   Create instance of RinZCampaign
-    *   @param {address} _marketplaceAddress - marketplace address to sale this campaign
     *   @param {address} _campaignPaymentAddress - payment address to receive coinToken when nft have sold
     *   @param {string} _baseMetadataUri - baseMetadataUri of this campaign
     *   @param {bool} _isFixedTokenId - if true token id of nft is set by owner, else auto increment
-    *   @param {uint256} _startTimeToBuy - start time to buy nft the first time on KOLs page
+    *   @param {uint256} _whitelistStartTime - start time for whitelist to buy nft the first time on KOLs page
+    *   @param {uint256} _publicStartTime - start time for all to buy nft the first time on KOLs page
     *   @param {uint256} _endTimeToBuy - end time to buy nft the first time on KOLs page
     *   @param {IERC20} _coinToken - currency that KOLs want to sell nft campaign
     *   @param {string} _symbol - symbol of this campaign
     *   @param {address} _adminAddress - admin address have access control to this campaign
     */
     function createCampaign(
-        address _marketplaceAddress,
         address _campaignPaymentAddress,
         string memory _baseMetadataUri,
-        bool _isFixedTokenId, 
-        uint256 _startTimeToBuy,
+        bool _isFixedTokenId,
+        uint256 _whitelistStartTime,
+        uint256 _publicStartTime,
         uint256 _endTimeToBuy,
         IERC20 _coinToken,
         string memory _symbol
-        ) public onlyRole(ADMIN_ROLE) {
+        ) external onlyRole(ADMIN_ROLE) {
         RinZCampaign campaign = new RinZCampaign(
-            _marketplaceAddress,
+            marketAddress,
             _baseMetadataUri,
             _campaignPaymentAddress,
             _isFixedTokenId,
-            _startTimeToBuy,
+            _whitelistStartTime,
+            _publicStartTime,
             _endTimeToBuy,
             _coinToken,
             _symbol,
             msg.sender
         );
 
-        address campaignAddress = address(campaign);
-        rinZCampaignsAddress.push(campaignAddress);
+        rinZCampaignsAddress.push(address(campaign));
         
         emit CreateCampaign(
-            campaignAddress,
-            _marketplaceAddress,
+            address(campaign),
             _baseMetadataUri,
             _campaignPaymentAddress,
             _isFixedTokenId,
-            _startTimeToBuy,
+            _whitelistStartTime,
+            _publicStartTime,
             _endTimeToBuy,
             _coinToken,
             _symbol,
@@ -87,17 +93,11 @@ contract RinZCampaignFactory is AccessControl {
         return super.supportsInterface(interfaceId);
     }
 
-    function getAllCampaign() public view onlyRole(ADMIN_ROLE) returns(address[] memory) {
+    function getAllCampaign() external view onlyRole(ADMIN_ROLE) returns(address[] memory) {
         return rinZCampaignsAddress;
     }
 
-    function removeCampaign(address campaignAddress) public onlyRole(ADMIN_ROLE) {
-        for (uint256 i; i < rinZCampaignsAddress.length; i++) {
-            if (rinZCampaignsAddress[i] == campaignAddress) {
-                rinZCampaignsAddress[i] = rinZCampaignsAddress[rinZCampaignsAddress.length - 1];
-                rinZCampaignsAddress.pop();
-            }
-        }
-        emit RemoveCampaign(campaignAddress);
+    function setMarketAddress(address _marketAddress) external onlyRole(ADMIN_ROLE) {
+        marketAddress = _marketAddress;
     }
 }
