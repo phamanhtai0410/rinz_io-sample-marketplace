@@ -4,7 +4,9 @@ pragma solidity ^0.8.2;
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 // import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./RinZNFTDetail.sol";
@@ -12,7 +14,7 @@ import "./RinZNFTTypeDetail.sol";
 import "./INFTBox.sol";
 import "./RinZNFTMarket.sol";
 
-contract RinZCampaign is ERC1155, AccessControl {
+contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgradeable {
 
     using RinZNFTDetail for RinZNFTDetail.NFTDetail;
     using RinZNFTTypeDetail for RinZNFTTypeDetail.NFTTypeDetail;
@@ -26,7 +28,6 @@ contract RinZCampaign is ERC1155, AccessControl {
     event OpenBox(address to, uint16 tokenId);
 
     // token decimal
-    uint public constant TOKEN_DECIMAL = 10 ** 18;
     uint8 public constant MAX_OPEN_BOX_UNIT = 10;
     uint8 public constant NFT_PER_BOX = 1;
 
@@ -88,7 +89,7 @@ contract RinZCampaign is ERC1155, AccessControl {
     // total whitelist have bought
     uint256 public whitelistRoundBought;
 
-    constructor(
+    function initialize(
         address _marketOwnerAddress,
         string memory _baseMetadataUri,
         address _campaignPaymentAddress,
@@ -99,8 +100,11 @@ contract RinZCampaign is ERC1155, AccessControl {
         IERC20 _coinToken,
         string memory _symbol,
         address _adminAddress
-        ) ERC1155("") {
-        //__AccessControl_init();
+        ) external initializer {
+        __ERC1155_init("");
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
+        
         marketOwnerAddress = _marketOwnerAddress;
         baseMetadataUri = _baseMetadataUri;
         campaignPaymentAddress = _campaignPaymentAddress;
@@ -262,9 +266,6 @@ contract RinZCampaign is ERC1155, AccessControl {
             
         _mint(_to, uint256(_tokenId), 1, "");
         
-        // Update holders token ids
-        _addTokenIdToHolder(_to, _tokenId);
-        
         // Update nft type supply have minted
         nftTypeSupply[_tokenType] = nftTypeHaveMinted + 1;
 
@@ -332,9 +333,6 @@ contract RinZCampaign is ERC1155, AccessControl {
         require(tokenDetail.quantity == 0, "Token id is minted");
             
         _mint(_to, uint256(_tokenId), 1, "");
-        
-        // Update holders token ids
-        _addTokenIdToHolder(_to, _tokenId);
         
         // Update nft type supply have minted
         nftTypeSupply[_tokenType] = nftTypeHaveMinted + 1;
@@ -412,9 +410,6 @@ contract RinZCampaign is ERC1155, AccessControl {
         whitelistRoundBought += 1;
         whitelistBuyable[_to] -= 1;
         
-        // Update holders token ids
-        _addTokenIdToHolder(_to, _tokenId);
-        
         // Update nft type supply have minted
         nftTypeSupply[_tokenType] = nftTypeHaveMinted + 1;
 
@@ -491,9 +486,16 @@ contract RinZCampaign is ERC1155, AccessControl {
         return (_totalSupply, _mintedSupply, _pricePerItem);
     }
 
-    function supportsInterface(bytes4 interfaceId) public view override(ERC1155, AccessControl) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC1155Upgradeable, AccessControlUpgradeable) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
+
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyRole(ADMIN_ROLE)
+    {}
+
 
     // Remove tokenId of holder if not have (quantity < 1)
     function _removeTokenIdIfNotHave(
@@ -507,29 +509,6 @@ contract RinZCampaign is ERC1155, AccessControl {
                 ids.pop();
             }
         }
-    }
-
-    // Add tokenId to holder
-    function _addTokenIdToHolder(
-        address _holderAddress,
-        uint16 _tokenId
-    ) internal {
-        uint16[] storage ids = holders[_holderAddress];
-
-        if (!_isHolderHaveTokenId(_holderAddress, _tokenId) && balanceOf(_holderAddress, uint256(_tokenId)) > 0) {
-            ids.push(_tokenId);
-        }
-    }
-
-    // Check if holder have tokenId
-    function _isHolderHaveTokenId (address _holderAddress, uint16 _tokenId) internal view returns (bool) {
-        uint16[] storage ids = holders[_holderAddress];
-
-        for (uint256 i; i < ids.length; ++i) {
-            if (ids[i] == _tokenId) return true;
-        }
-
-        return false;
     }
 
     /** Marketplace fee */

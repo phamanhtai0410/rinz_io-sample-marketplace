@@ -4,6 +4,7 @@ pragma solidity ^0.8.2;
 //import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import { Clones } from "@openzeppelin/contracts/proxy/Clones.sol";
 import "./RinZCampaign.sol";
 
 contract RinZCampaignFactory is AccessControl {
@@ -30,8 +31,12 @@ contract RinZCampaignFactory is AccessControl {
     // marketplace address
     address public marketAddress;
 
+    // implementAddress
+    address public implementationAddress;
+
     constructor(address _marketAddress) {
         marketAddress = _marketAddress;
+        implementationAddress = address(new RinZCampaign());
 
         _setupRole(ADMIN_ROLE, msg.sender);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -60,7 +65,9 @@ contract RinZCampaignFactory is AccessControl {
         IERC20 _coinToken,
         string memory _symbol
         ) external onlyRole(ADMIN_ROLE) {
-        RinZCampaign campaign = new RinZCampaign(
+        address campaign = Clones.clone(implementationAddress);
+
+        RinZCampaign(campaign).initialize(
             marketAddress,
             _baseMetadataUri,
             _campaignPaymentAddress,
