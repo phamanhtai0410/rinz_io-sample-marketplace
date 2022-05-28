@@ -10,6 +10,7 @@
     "@openzeppelin/contracts": "^4.6.0",
     "@openzeppelin/contracts-upgradeable": "^4.6.0",
     "dotenv": "^16.0.1",
-    "truffle": "^5.5.13"
+    "truffle": "^5.5.13",
+    "truffle-flatten": "^1.0.8"
   }
 }
