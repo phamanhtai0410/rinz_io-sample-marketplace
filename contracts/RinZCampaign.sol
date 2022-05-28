@@ -89,6 +89,9 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
     // total whitelist have bought
     uint256 public whitelistRoundBought;
 
+    // max allocation for normal user
+    uint256 public maxAllocation;
+
     function initialize(
         address _marketOwnerAddress,
         string memory _baseMetadataUri,
@@ -115,8 +118,14 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         coinToken = _coinToken;
         symbol = _symbol;
 
+        maxAllocation = 5;
+
         _setupRole(ADMIN_ROLE, _adminAddress);
         _setupRole(DEFAULT_ADMIN_ROLE, _adminAddress);
+    }
+
+    function setMaxAllocation(uint256 _maxAllocation) external onlyRole(ADMIN_ROLE) {
+        maxAllocation = _maxAllocation;
     }
 
     function setCampaignPaymentAddress(address _campaignPaymentAddress) external onlyRole(ADMIN_ROLE) {
@@ -127,10 +136,6 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         coinToken = _coinToken;
     }
 
-    function getSymbol() external view returns (string memory) {
-        return symbol;
-    }
-
     function customTokenIdToWhiteList(uint16 _tokenId, bool _isActive) external onlyRole(ADMIN_ROLE) {
         customTokenIdsWhiteList[_tokenId] = _isActive;
     }
@@ -139,12 +144,12 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         return customTokenIdsWhiteList[_tokenId];
     }
 
-    // Get list token details
+    // Get list token details except box
     function getTokenTypeDetails() external view returns (RinZNFTTypeDetail.NFTTypeDetail[] memory) {
         uint256 totalTokenType = typeCounter.current();
         RinZNFTTypeDetail.NFTTypeDetail[] memory typeDetails = new RinZNFTTypeDetail.NFTTypeDetail[](totalTokenType - 1);
 
-        for (uint256 i = 1; i < totalTokenType; i++) {
+        for (uint256 i = 1; i <= totalTokenType; i++) {
             RinZNFTTypeDetail.NFTTypeDetail memory typeDetail = nftTypeDetails[uint8(i)];
 
             typeDetails[i - 1] = typeDetail;
@@ -153,41 +158,36 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         return typeDetails;
     }
 
+    // create box detail
     function createNFTBoxDetail(uint256 _totalSupply, uint256 _pricePerItem) external onlyRole(ADMIN_ROLE) {
-        RinZNFTTypeDetail.NFTTypeDetail memory _nftTypeDetail;
-        
-        _nftTypeDetail.nftType = 0;
-        _nftTypeDetail.totalSupply = _totalSupply;
-        _nftTypeDetail.pricePerItem = _pricePerItem;
-        _nftTypeDetail.rate = 0;
-
-        nftTypeDetails[0] = _nftTypeDetail;
+        nftTypeDetails[0].nftType = 0;
+        nftTypeDetails[0].totalSupply = _totalSupply;
+        nftTypeDetails[0].pricePerItem = _pricePerItem;
+        nftTypeDetails[0].rate = 0;
 
         emit CreateNFTTypeDetail(0, _totalSupply, _pricePerItem);
     }
 
+    // create list nft type detail, except box
     function createListNFTTypeDetail(uint256[] memory _totalSupplies, uint256[] memory _pricePerItems, uint256[] memory _rates) external onlyRole(ADMIN_ROLE) {
         require(_totalSupplies.length == _pricePerItems.length, "Total supplies and Price per items must be same length");
         require(_totalSupplies.length == _rates.length, "Total supplies and rate list must be same length");
-
-        RinZNFTTypeDetail.NFTTypeDetail memory _nftTypeDetail;
         
         for (uint256 i = 0; i < _totalSupplies.length; i++) {
             typeCounter.increment();
 
             uint8 nftType = uint8(typeCounter.current());
 
-            _nftTypeDetail.nftType = nftType;
-            _nftTypeDetail.totalSupply = _totalSupplies[i];
-            _nftTypeDetail.pricePerItem = _pricePerItems[i];
-            _nftTypeDetail.rate = _rates[i];
-
-            nftTypeDetails[nftType] = _nftTypeDetail;
+            nftTypeDetails[nftType].nftType = nftType;
+            nftTypeDetails[nftType].totalSupply = _totalSupplies[i];
+            nftTypeDetails[nftType].pricePerItem = _pricePerItems[i];
+            nftTypeDetails[nftType].rate = _rates[i];
 
             emit CreateNFTTypeDetail(nftType, _totalSupplies[i], _pricePerItems[i]);
         }
     }
 
+    // set whitelist address with amount can buy
     function setWhitelistBuyable(address[] memory _whitelistAddresses, uint256[] memory _buyableAmountList) external onlyRole(ADMIN_ROLE) {
         require(_whitelistAddresses.length == _buyableAmountList.length, "Whitelist and buyable amount list must be same length");
         for (uint256 i = 0; i < _whitelistAddresses.length; i++) {
@@ -210,15 +210,13 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
 
     // Get all nft by owner
     function getNftByOwner(address _owner) external view returns (RinZNFTDetail.NFTDetail[] memory) {
-        uint16[] memory ids = holders[_owner];
-        RinZNFTDetail.NFTDetail[] memory nfts = new RinZNFTDetail.NFTDetail[](ids.length);
-        for (uint16 i = 0; i < ids.length; ++i) {
-            uint256 amountOfIdUserOwner = balanceOf(_owner, uint256(ids[i]));
+        RinZNFTDetail.NFTDetail[] memory nfts;
+        for (uint16 i = 0; i < holders[_owner].length; ++i) {
+            uint256 amountOfIdUserOwner = balanceOf(_owner, uint256(holders[_owner][i]));
 
             if (amountOfIdUserOwner <= 0) continue;
 
-            RinZNFTDetail.NFTDetail memory nftDetail = tokenDetails[ids[i]];
-            nfts[i] = nftDetail;
+            nfts[i] = tokenDetails[holders[_owner][i]];
         }
         return nfts;
     }
@@ -233,6 +231,9 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         // Check time to buy
         require(block.timestamp >= publicStartTime, "It's not time to buy public sale");
         require(block.timestamp <= endTimeToBuy, "It's not time to buy");
+
+        // Check max allocation user can buy
+        require(holders[_to].length < maxAllocation, "Buy limit reached");
         
         // Check token type is exist in this campaign
         RinZNFTTypeDetail.NFTTypeDetail memory nftTypeDetail = nftTypeDetails[_tokenType];
@@ -265,6 +266,9 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         coinToken.transferFrom(_to, campaignPaymentAddress, kolProfit);
             
         _mint(_to, uint256(_tokenId), 1, "");
+
+        // Update user bought list
+        holders[_to].push(_tokenId);
         
         // Update nft type supply have minted
         nftTypeSupply[_tokenType] = nftTypeHaveMinted + 1;
@@ -333,6 +337,9 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         require(tokenDetail.quantity == 0, "Token id is minted");
             
         _mint(_to, uint256(_tokenId), 1, "");
+
+        // Update user bought amount
+        holders[_to].push(_tokenId);
         
         // Update nft type supply have minted
         nftTypeSupply[_tokenType] = nftTypeHaveMinted + 1;
@@ -405,6 +412,9 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         coinToken.transferFrom(_to, campaignPaymentAddress, kolProfit);
             
         _mint(_to, uint256(_tokenId), 1, "");
+
+        // Update user bought amount
+        holders[_to].push(_tokenId);
 
         // update whitelistBought and whitelistRoundBought
         whitelistRoundBought += 1;
@@ -495,21 +505,6 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         override
         onlyRole(ADMIN_ROLE)
     {}
-
-
-    // Remove tokenId of holder if not have (quantity < 1)
-    function _removeTokenIdIfNotHave(
-        address _owner
-    ) internal {
-        uint16[] storage ids = holders[_owner];
-
-        for (uint256 i; i < ids.length; ++i) {
-            if (balanceOf(_owner, uint256(ids[i])) <= 0) {
-                ids[i] = ids[ids.length - 1];
-                ids.pop();
-            }
-        }
-    }
 
     /** Marketplace fee */
     function _marketFee(uint256 _amount) internal view returns (uint256 fee) {
