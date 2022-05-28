@@ -210,7 +210,7 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
 
     // Get all nft by owner
     function getNftByOwner(address _owner) external view returns (RinZNFTDetail.NFTDetail[] memory) {
-        RinZNFTDetail.NFTDetail[] memory nfts;
+        RinZNFTDetail.NFTDetail[] memory nfts = new RinZNFTDetail.NFTDetail[](holders[_owner].length);
         for (uint16 i = 0; i < holders[_owner].length; ++i) {
             uint256 amountOfIdUserOwner = balanceOf(_owner, uint256(holders[_owner][i]));
 
