@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.2;
 
-import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-// import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
@@ -12,7 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./RinZNFTDetail.sol";
 import "./RinZNFTTypeDetail.sol";
 import "./INFTBox.sol";
-import "./RinZNFTMarket.sol";
+import "./IRinZNFTMarket.sol";
 
 contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgradeable {
 
@@ -28,14 +26,14 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
     event OpenBox(address to, uint16 tokenId);
 
     // token decimal
-    uint8 public constant MAX_OPEN_BOX_UNIT = 10;
-    uint8 public constant NFT_PER_BOX = 1;
+    uint8 internal constant MAX_OPEN_BOX_UNIT = 10;
+    uint8 internal constant NFT_PER_BOX = 1;
 
     // Market place owner address to receive market fee when mint token
     address public marketOwnerAddress;
 
     // Base meta data uri 
-    string public baseMetadataUri;
+    string internal baseMetadataUri;
 
     // Campaign Payment Address to receive when mint token
     address public campaignPaymentAddress;
@@ -58,9 +56,12 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
     // symbol of this campaign
     string public symbol;
 
-    Counters.Counter public tokenIdCounter;
+    // name of this campaign
+    string public name;
 
-    Counters.Counter public typeCounter;
+    Counters.Counter internal tokenIdCounter;
+
+    Counters.Counter internal typeCounter;
 
     // custom token Ids list
     mapping (uint16 => bool) customTokenIdsWhiteList;
@@ -72,10 +73,10 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
     mapping (uint8 => uint256) public nftTypeSupply;
 
     // Mapping token's holder address to tokenIds list  
-    mapping (address => uint16[]) public holders;   
+    mapping (address => uint16[]) internal holders;   
 
     // Mapping token id to token type
-    mapping (uint16 => uint8) public tokenIdsByType; 
+    mapping (uint16 => uint8) internal tokenIdsByType; 
 
     // Mapping from token ID to token details.
     mapping(uint16 => RinZNFTDetail.NFTDetail) public tokenDetails;
@@ -102,6 +103,7 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         uint256 _endTimeToBuy,
         IERC20 _coinToken,
         string memory _symbol,
+        string memory _name,
         address _adminAddress
         ) external initializer {
         __ERC1155_init("");
@@ -117,11 +119,20 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         endTimeToBuy = _endTimeToBuy;
         coinToken = _coinToken;
         symbol = _symbol;
+        name = _name;
 
-        maxAllocation = 5;
+        //maxAllocation = 5;
 
         _setupRole(ADMIN_ROLE, _adminAddress);
         _setupRole(DEFAULT_ADMIN_ROLE, _adminAddress);
+    }
+
+    function getSymbol() external view returns(string memory) {
+        return symbol;
+    }
+
+    function getName() external view returns(string memory) {
+        return name;
     }
 
     function setMaxAllocation(uint256 _maxAllocation) external onlyRole(ADMIN_ROLE) {
@@ -233,7 +244,9 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         require(block.timestamp <= endTimeToBuy, "It's not time to buy");
 
         // Check max allocation user can buy
-        require(holders[_to].length < maxAllocation, "Buy limit reached");
+        if (maxAllocation > 0) {
+            require(holders[_to].length < maxAllocation, "Buy limit reached");
+        }
         
         // Check token type is exist in this campaign
         RinZNFTTypeDetail.NFTTypeDetail memory nftTypeDetail = nftTypeDetails[_tokenType];
@@ -509,7 +522,7 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
     /** Marketplace fee */
     function _marketFee(uint256 _amount) internal view returns (uint256 fee) {
         // TODO check rate
-        uint16 marketFeePercent = RinZNFTMarket(marketOwnerAddress).getMarketFeePercent();
+        uint16 marketFeePercent = IRinZNFTMarket(marketOwnerAddress).getMarketFeePercent();
         fee = (_amount / 10000) * marketFeePercent;
     }
 

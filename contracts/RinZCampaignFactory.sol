@@ -19,6 +19,7 @@ contract RinZCampaignFactory is AccessControl {
         uint256 endTimeToBuy,
         IERC20 coinToken,
         string symbol,
+        string name,
         address adminAddress
     );
     event RemoveCampaign(address campaignAddress);
@@ -53,6 +54,7 @@ contract RinZCampaignFactory is AccessControl {
     *   @param {uint256} _endTimeToBuy - end time to buy nft the first time on KOLs page
     *   @param {IERC20} _coinToken - currency that KOLs want to sell nft campaign
     *   @param {string} _symbol - symbol of this campaign
+    *   @param {string} _name - name of this campaign
     *   @param {address} _adminAddress - admin address have access control to this campaign
     */
     function createCampaign(
@@ -63,7 +65,8 @@ contract RinZCampaignFactory is AccessControl {
         uint256 _publicStartTime,
         uint256 _endTimeToBuy,
         IERC20 _coinToken,
-        string memory _symbol
+        string memory _symbol,
+        string memory _name
         ) external onlyRole(ADMIN_ROLE) {
         address campaign = Clones.clone(implementationAddress);
 
@@ -77,6 +80,7 @@ contract RinZCampaignFactory is AccessControl {
             _endTimeToBuy,
             _coinToken,
             _symbol,
+            _name,
             msg.sender
         );
 
@@ -92,6 +96,7 @@ contract RinZCampaignFactory is AccessControl {
             _endTimeToBuy,
             _coinToken,
             _symbol,
+            _name,
             msg.sender
         );
     }
