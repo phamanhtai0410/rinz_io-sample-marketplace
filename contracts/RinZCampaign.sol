@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./RinZNFTDetail.sol";
@@ -12,13 +13,13 @@ import "./RinZNFTTypeDetail.sol";
 import "./INFTBox.sol";
 import "./IRinZNFTMarket.sol";
 
-contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgradeable {
+contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgradeable, OwnableUpgradeable {
 
     using RinZNFTDetail for RinZNFTDetail.NFTDetail;
     using RinZNFTTypeDetail for RinZNFTTypeDetail.NFTTypeDetail;
     using Counters for Counters.Counter;
 
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    bytes32 internal constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     event ActiveGiftCode(address to, uint16 tokenId, uint8 tokenType, string uri, string giftCode);
     event Mint(address to, uint16 tokenId, uint8 tokenType, string uri, uint256 kolProfit, uint256 marketFee);
@@ -30,47 +31,47 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
     uint8 internal constant NFT_PER_BOX = 1;
 
     // Market place owner address to receive market fee when mint token
-    address public marketOwnerAddress;
+    address internal marketOwnerAddress;
 
     // Base meta data uri 
     string internal baseMetadataUri;
 
     // Campaign Payment Address to receive when mint token
-    address public campaignPaymentAddress;
+    address internal campaignPaymentAddress;
 
     // If true tokenId will set by minner
-    bool public isFixedTokenId;
+    bool internal isFixedTokenId;
     
     // Start time to buy for whitelist
-    uint256 public whitelistStartTime;
+    uint256 internal whitelistStartTime;
     // Start time to public buy on this campaign
-    uint256 public publicStartTime;
+    uint256 internal publicStartTime;
     // End time to buy first nft on this campaign
-    uint256 public endTimeToBuy;
+    uint256 internal endTimeToBuy;
 
     // Currency use to buy first nft of this campaign
     IERC20 public coinToken;
 
-    INFTBox public nftBox;
+    INFTBox internal nftBox;
 
     // symbol of this campaign
-    string public symbol;
+    string internal symbol;
 
     // name of this campaign
-    string public name;
+    string internal name;
 
     Counters.Counter internal tokenIdCounter;
 
     Counters.Counter internal typeCounter;
 
     // custom token Ids list
-    mapping (uint16 => bool) customTokenIdsWhiteList;
+    mapping (uint16 => bool) internal customTokenIdsWhiteList;
 
     // Mapping token type to campaign detail on this campaign
-    mapping (uint8 => RinZNFTTypeDetail.NFTTypeDetail) public nftTypeDetails;
+    mapping (uint8 => RinZNFTTypeDetail.NFTTypeDetail) internal nftTypeDetails;
 
     // Mapping token type to supply have minted
-    mapping (uint8 => uint256) public nftTypeSupply;
+    mapping (uint8 => uint256) internal nftTypeSupply;
 
     // Mapping token's holder address to tokenIds list  
     mapping (address => uint16[]) internal holders;   
@@ -82,16 +83,16 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
     mapping(uint16 => RinZNFTDetail.NFTDetail) public tokenDetails;
 
     // Mapping gift code is active
-    mapping (string => bool) public giftCodes;
+    mapping (string => bool) internal giftCodes;
 
     // mapping white list address to amount can buy
-    mapping (address => uint256) public whitelistBuyable;
+    mapping (address => uint256) internal whitelistBuyable;
 
     // total whitelist have bought
     uint256 public whitelistRoundBought;
 
     // max allocation for normal user
-    uint256 public maxAllocation;
+    uint256 internal maxAllocation;
 
     function initialize(
         address _marketOwnerAddress,
@@ -109,6 +110,7 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         __ERC1155_init("");
         __AccessControl_init();
         __UUPSUpgradeable_init();
+        _transferOwnership(_adminAddress);
         
         marketOwnerAddress = _marketOwnerAddress;
         baseMetadataUri = _baseMetadataUri;
@@ -133,6 +135,10 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
 
     function getName() external view returns(string memory) {
         return name;
+    }
+
+    function getTimeBuy() external view returns(uint256, uint256, uint256) {
+        return (whitelistStartTime, publicStartTime, endTimeToBuy);
     }
 
     function setMaxAllocation(uint256 _maxAllocation) external onlyRole(ADMIN_ROLE) {
@@ -272,6 +278,7 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         uint256 marketPlaceFee = _marketFee(nftTypeDetail.pricePerItem);
 
         require(nftTypeDetail.pricePerItem <= coinToken.balanceOf(_to), "User need hold enough Token to buy this nft");
+
         // Fee for market
         coinToken.transferFrom(_to, marketOwnerAddress, marketPlaceFee);
         // Profit for the kol (total price - marketPlaceFee - discountFee)
@@ -418,6 +425,7 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         uint256 marketPlaceFee = _marketFee(nftTypeDetail.pricePerItem);
 
         require(nftTypeDetail.pricePerItem <= coinToken.balanceOf(_to), "User need hold enough Token to buy this nft");
+
         // Fee for market
         coinToken.transferFrom(_to, marketOwnerAddress, marketPlaceFee);
         // Profit for the kol (total price - marketPlaceFee - discountFee)
@@ -507,6 +515,12 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
         _mintedSupply = nftTypeSupply[_tokenType];
 
         return (_totalSupply, _mintedSupply, _pricePerItem);
+    }
+
+    // Check is address in whitelist
+    // if false, user isn't in whitelist or mintable limit reached
+    function isAddressInWhitelist() external view returns (bool) {
+        return whitelistBuyable[msg.sender] > 0;
     }
 
     function supportsInterface(bytes4 interfaceId) public view override(ERC1155Upgradeable, AccessControlUpgradeable) returns (bool) {
