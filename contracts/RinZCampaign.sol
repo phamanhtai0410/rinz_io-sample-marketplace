@@ -55,10 +55,10 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
     INFTBox internal nftBox;
 
     // symbol of this campaign
-    string internal symbol;
+    string public symbol;
 
     // name of this campaign
-    string internal name;
+    string public name;
 
     Counters.Counter internal tokenIdCounter;
 
