@@ -536,7 +536,7 @@ contract RinZCampaign is ERC1155Upgradeable, AccessControlUpgradeable, UUPSUpgra
     /** Marketplace fee */
     function _marketFee(uint256 _amount) internal view returns (uint256 fee) {
         // TODO check rate
-        uint16 marketFeePercent = IRinZNFTMarket(marketOwnerAddress).getMarketFeePercent();
+        uint16 marketFeePercent = IRinZNFTMarket(marketOwnerAddress).getMarketFeePercent(address(this));
         fee = (_amount / 10000) * marketFeePercent;
     }
 

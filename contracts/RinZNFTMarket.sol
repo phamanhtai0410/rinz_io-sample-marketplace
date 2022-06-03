@@ -3,20 +3,20 @@ pragma solidity ^0.8.2;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
-import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
-import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC1155/utils/ERC1155HolderUpgradeable.sol";
 import "./RinZNFTMarketItem.sol";
 import "./RinZNFTMarketCampaign.sol";
 
-contract RinZNFTMarket is ERC1155Holder, Ownable {
+contract RinZNFTMarket is ERC1155HolderUpgradeable, OwnableUpgradeable, AccessControlUpgradeable {
 
     using RinZNFTMarketItem for RinZNFTMarketItem.MarketItem;
     using RinZNFTMarketCampaign for RinZNFTMarketCampaign.MarketCampaign;
     using Counters for Counters.Counter;
 
-    event CampaignRegistered(address campaign, uint16 discountPercent, address paymentAddress);
+    event CampaignRegistered(address campaign, uint16 discountPercent, uint16 marketFee, address paymentAddress);
     event Sale(
         uint256 marketId,
         address owner,
@@ -29,11 +29,11 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
     event Buy(uint256 marketId, address campaign, uint256 tokenId, address buyer, uint256 pricePerItem, uint256 amount, uint256 commissionFee, uint256 marketPlaceFee);
     event DeactiveSale(uint256 marketId, address campaign, uint256 tokenId);
 
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+
     uint public constant TOKEN_DECIMAL = 10 ** 18;
 
     IERC20 public coinToken;
-
-    uint16 public marketFeePercent = 450;  // 450/10000 = 4.5%
 
     Counters.Counter public marketIdCounter;
 
@@ -45,10 +45,16 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
     // mapping marketId to market item detail
     mapping (uint256 => RinZNFTMarketItem.MarketItem) public itemSellOnMarket;
 
+    constructor() {
+        _setupRole(ADMIN_ROLE, msg.sender);
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    }
 
-    function setCoinToken(
-        IERC20 _coinToken
-    ) public onlyOwner {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC1155ReceiverUpgradeable, AccessControlUpgradeable) returns (bool) {
+        return super.supportsInterface(interfaceId);
+    }
+
+    function setCoinToken(IERC20 _coinToken) public onlyOwner {
         coinToken = _coinToken;
     }
 
@@ -59,22 +65,29 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
     }
 
     /*New campaign should call this function to sale item on market*/
-    //       @param {address} campaign ---- deployed address of campaign
-    //       @param {uint256} discountPercent ---- discount percent will receive after sale item
-    //       @param {address} paymentAddress ---- an address to receive payment from discount fee
+    //       @param {address}   campaign            ---- deployed address of campaign
+    //       @param {uint16}    discountPercent     ---- discount percent will receive after sale item
+    //       @param {uint16}    marketFeePercent    ---- market fee percent for this campaign (450 / 10000 = 4.5%)
+    //       @param {address}   paymentAddress      ---- an address to receive payment from discount fee
 
-    function campaignRegister(address _campaign, uint16 _discountPercent, address _paymentAddress) public onlyOwner {
+    function campaignRegister(
+        address _campaign, 
+        uint16 _discountPercent, 
+        uint16 _marketFeePercent,
+        address _paymentAddress
+        ) external onlyRole(ADMIN_ROLE) {
         require(!_isCampaignRegistered(_campaign), "Campaign have registered");
 
         RinZNFTMarketCampaign.MarketCampaign memory _marketCampaign;
         _marketCampaign.isActiveSale = true;
         _marketCampaign.discountPercent = _discountPercent;
+        _marketCampaign.marketFeePercent = _marketFeePercent;
         _marketCampaign.paymentAddress = _paymentAddress;
 
         campaignSellOnMarket[_campaign] = _marketCampaign;
 
         // emit event registered
-        emit CampaignRegistered(_campaign, _discountPercent, _paymentAddress);
+        emit CampaignRegistered(_campaign, _discountPercent, _marketFeePercent, _paymentAddress);
     }
 
     /** Sale token */
@@ -163,11 +176,12 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         marketItem.amount = marketItem.amount - _amount;
 
         uint256 totalPrice = _pricePerItem * _amount;
-        // Total marketFee
-        uint256 marketPlaceFee = _marketFee(totalPrice);
         
         // get campaign registered info
         RinZNFTMarketCampaign.MarketCampaign memory marketCampaign = campaignSellOnMarket[marketItem.campaign];
+
+        // Total marketFee
+        uint256 marketPlaceFee = _marketFee(totalPrice, marketCampaign.marketFeePercent);
 
         // TODO: Decrease coinToken transfer from 3 to 2
         // market will hold fee and send to kol when they send withdraw request
@@ -197,46 +211,41 @@ contract RinZNFTMarket is ERC1155Holder, Ownable {
         address _campaign,
         bool _isActive, 
         uint16 _discountPercent,
+        uint16 _marketFeePercent,
         address _paymentAddress
-        ) public onlyOwner {
+        ) public onlyRole(ADMIN_ROLE) {
         require(_isCampaignRegistered(_campaign), "Campaign haven't registered");
         campaignSellOnMarket[_campaign].isActiveSale = _isActive;
         campaignSellOnMarket[_campaign].discountPercent = _discountPercent;
+        campaignSellOnMarket[_campaign].marketFeePercent = _marketFeePercent;
         campaignSellOnMarket[_campaign].paymentAddress = _paymentAddress;
     }
 
-    function setMarketFeePercent(uint16 _marketFeePercent) public onlyOwner {
-        require(_marketFeePercent < 10000, "Market fee percent must be less than 100%");
-        marketFeePercent = _marketFeePercent;
-    }
-
-    function getMarketFeePercent() external view returns (uint16) {
-        return marketFeePercent;
+    function getMarketFeePercent(address _campaign) external view returns (uint16) {
+        return campaignSellOnMarket[_campaign].marketFeePercent;
     }
 
     function getMarketItemInfo(uint256 _marketId) external view returns (RinZNFTMarketItem.MarketItem memory) {
         return itemSellOnMarket[_marketId];
     }
 
-    function _isCampaignActive(address _campaign) public view returns (bool) {
-        RinZNFTMarketCampaign.MarketCampaign memory marketCampaign_ = campaignSellOnMarket[_campaign];
-        return marketCampaign_.isActiveSale;
+    function _isCampaignActive(address _campaign) internal view returns (bool) {
+        return campaignSellOnMarket[_campaign].isActiveSale;
     }
 
-    function _isCampaignRegistered(address campaign) internal view returns (bool) {
-        RinZNFTMarketCampaign.MarketCampaign memory marketCampaign_ = campaignSellOnMarket[campaign];
-        return marketCampaign_.paymentAddress != address(0);
+    function _isCampaignRegistered(address _campaign) internal view returns (bool) {
+        return campaignSellOnMarket[_campaign].paymentAddress != address(0);
     }
 
     /** Marketplace fee */
-    function _marketFee(uint256 _amount) internal view returns (uint256 fee) {
+    function _marketFee(uint256 _amount, uint16 _marketFeePercent) internal pure returns (uint256 fee) {
         // TODO check rate
-        fee = (_amount / 10000) * marketFeePercent;
+        fee = _amount / 10000 * _marketFeePercent;
     }
 
     /** Discount fee for kol */
     function _discountFeeForCampaignOwner(uint256 _amount, uint256 _percent) internal pure returns (uint256 fee) {
         // TODO check rate
-        fee = _amount * _percent / 10000;
+        fee = _amount / 10000 * _percent;
     }
 }
